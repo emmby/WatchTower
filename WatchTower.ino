@@ -240,14 +240,6 @@ void loop() {
       line4Buf
     );
 
-    // Reboot once a day at noon to address any wifi hiccoughs.
-    // (specifically, reboot any time after 12pm as long as it's been at least 20 hours since the last reboot)
-    if( uptime > 20*60*60  && buf_now_local.tm_hour >= 12) {
-      Serial.println("Initiating daily reboot");
-      delay(1000);
-      forceReboot();
-    }
-
     // If no sync in last 4h, set the pixel to red and reboot
     if( now.tv_sec - lastSync.tv_sec > 60 * 60 * 4 ) {
       Serial.println("Last sync more than four hours ago, rebooting.");
