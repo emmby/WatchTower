@@ -121,7 +121,7 @@ void setup() {
   // Connect to network time server
   // By default, it will resync every hour
   sntp_set_time_sync_notification_cb(time_sync_notification_cb);
-  configTime(0, 0, ntpServer);
+  configTzTime(timezone, ntpServer);
   struct tm timeinfo;
   if(!getLocalTime(&timeinfo)){
     Serial.println("Failed to obtain time");
@@ -131,11 +131,6 @@ void setup() {
     forceReboot();
   }
   Serial.println("Got the time from NTP");
-
-  // Now set the timezone.
-  // We broadcast in UTC, but we need the timezone for the is_dst bit
-  setenv("TZ",timezone,1);
-  tzset();
 
   // Start the 60khz carrier signal using 8-bit (0-255) resolution
   ledcAttach(PIN_ANTENNA, KHZ_60, 8);
