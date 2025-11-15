@@ -40,10 +40,10 @@ const char* ntpServer = "pool.ntp.org";
 
 // Configure the optional onboard neopixel
 Adafruit_NeoPixel pixels(1, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800);
-const uint32_t COLOR_READY = pixels.Color(0, 60, 0);
-const uint32_t COLOR_LOADING = pixels.Color(32, 20, 0);
-const uint32_t COLOR_ERROR = pixels.Color(150, 0, 0);
-const uint32_t COLOR_TRANSMIT = pixels.Color(32, 20, 0);
+const uint32_t COLOR_READY = pixels.Color(0, 60, 0); // green https://share.google/4WKm4XDkH9tfm3ESC
+const uint32_t COLOR_LOADING = pixels.Color(32, 20, 0); // orange https://share.google/FpyRsYuLjW3O7J9uc
+const uint32_t COLOR_ERROR = pixels.Color(150, 0, 0); // red https://share.google/nx2jWYSoGtl0opkzL
+const uint32_t COLOR_TRANSMIT = COLOR_LOADING;
 
 WiFiManager wifiManager;
 bool logicValue = 0; // TODO rename
