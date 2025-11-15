@@ -47,7 +47,6 @@ const uint32_t COLOR_TRANSMIT = pixels.Color(32, 0, 0); // dim red https://share
 
 WiFiManager wifiManager;
 bool logicValue = 0; // TODO rename
-bool displayConnected = false;
 struct timeval lastSync;
 
 // Optional I2c display 
@@ -58,9 +57,8 @@ struct timeval lastSync;
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 #define SCREEN_ADDRESS 0x3D /// See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
-TwoWire* wire = &Wire1;  // some boards use Wire, some use Wire1
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, wire, OLED_RESET);
-
+// Adafruit_SSD1306* display = new Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire1, OLED_RESET); // some boards use Wire, some use Wire1
+Adafruit_SSD1306* display = NULL;
 
 // A tricky way to force arduino to reboot
 // by accessing a protected memory address
@@ -90,16 +88,12 @@ void setup() {
   pixels.setPixelColor(0, COLOR_LOADING );
   pixels.show();
 
-  // Initialize optional I2c display
-  display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS);
-  wire->beginTransmission(SCREEN_ADDRESS);
-  displayConnected = wire->endTransmission () == 0;
-
-  if( displayConnected ) {
-    display.setTextSize(1);      // Normal 1:1 pixel scale
-    display.setTextColor(SSD1306_WHITE); // Draw white text
-    display.cp437(true);         // Use full 256 char 'Code Page 437' font
-
+  if( display ) {
+    // Initialize optional I2c display
+    display->begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS);
+    display->setTextSize(1);      // Normal 1:1 pixel scale
+    display->setTextColor(SSD1306_WHITE); // Draw white text
+    display->cp437(true);         // Use full 256 char 'Code Page 437' font
     updateOptionalDisplay(NULL, NULL, NULL, "Connecting...");
   }
 
@@ -119,7 +113,7 @@ void setup() {
   updateOptionalDisplay(NULL, NULL, NULL, "Syncing time...");
 
   // Connect to network time server
-  // By default, it will resync every hour
+  // By default, it will resync every few hours
   sntp_set_time_sync_notification_cb(time_sync_notification_cb);
   configTzTime(timezone, ntpServer);
   struct tm timeinfo;
@@ -476,18 +470,18 @@ static inline int is_leap_year(int year) {
 }
 
 static inline void updateOptionalDisplay(const char* line1, const char* line2, const char* line3, const char* line4) {
-  if( !displayConnected ) 
+  if( !display ) 
     return;
 
-  display.clearDisplay();
-  display.setTextSize(2);
-  display.setCursor(0, 0);     // Start at top-left corner
-  display.println(line1 != NULL ? line1 : "");
-  display.println(line2 != NULL ? line2 : "");
-  display.setTextSize(1);
-  display.println("");
-  display.println(line3 != NULL ? line3 : "");
-  display.println(line4 != NULL ? line4 : "");
-  display.display();
+  display->clearDisplay();
+  display->setTextSize(2);
+  display->setCursor(0, 0);     // Start at top-left corner
+  display->println(line1 != NULL ? line1 : "");
+  display->println(line2 != NULL ? line2 : "");
+  display->setTextSize(1);
+  display->println("");
+  display->println(line3 != NULL ? line3 : "");
+  display->println(line4 != NULL ? line4 : "");
+  display->display();
 }
 
