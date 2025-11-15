@@ -21,7 +21,6 @@
 
 // Set this to the pin your antenna is connected on
 const int PIN_ANTENNA = 13;
-const uint8_t LED_BRIGHTNESS = 10; // very dim, 0-255
 
 // Set to your timezone.
 // This is needed for computing DST if applicable
@@ -39,6 +38,7 @@ const int KHZ_60 = 60000;
 const char* ntpServer = "pool.ntp.org";
 
 // Configure the optional onboard neopixel
+const uint8_t LED_BRIGHTNESS = 10; // very dim, 0-255
 Adafruit_NeoPixel pixels(1, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800);
 const uint32_t COLOR_READY = pixels.Color(0, 60, 0); // green https://share.google/4WKm4XDkH9tfm3ESC
 const uint32_t COLOR_LOADING = pixels.Color(60, 32, 0); // orange https://share.google/7tT5GPxskZi8t8qmx
