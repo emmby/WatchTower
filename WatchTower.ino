@@ -146,30 +146,6 @@ void loop() {
 
   gettimeofday(&now,NULL);
   localtime_r(&now.tv_sec, &buf_now_local);
-
-  // DEBUGGING Optionally muck with buf_now_local
-  // to make it easier to see if your watch has been set
-  if (false) {
-    // I like to adjust the time to something I can tell was 
-    // set by the Watch Tower and not by Fort Collins.
-
-    // If you set the time/date ahead, be aware that the
-    // code will reboot if you set the time more than 4 hours
-    // ahead of lastSync.
-
-    // If you hardcode to a fixed date, be aware that some watches
-    // may not sync the date every night (presumably to save battery
-    // or speed up the sync process), so the date may not always be
-    // what you expect even though the watch says it sync'd.
-
-    // Subtract two weeks from today's date. mktime will do the right thing.
-    buf_now_local.tm_mday -= 14;
-    
-    // write your changes back to now and buf_now_local
-    now.tv_sec = mktime(&buf_now_local);
-    localtime_r(&now.tv_sec, &buf_now_local);
-  }
-
   gmtime_r(&now.tv_sec, &buf_now_utc); 
 
   // compute start of today for dst
