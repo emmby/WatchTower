@@ -49,16 +49,12 @@ WiFiManager wifiManager;
 bool logicValue = 0; // TODO rename
 struct timeval lastSync;
 
-// Optional I2c display 
-// https://www.adafruit.com/product/326
-// Does nothing if no display present.
-// Can be removed if not using.
-#define SCREEN_WIDTH 128 // OLED display width, in pixels
-#define SCREEN_HEIGHT 64 // OLED display height, in pixels
-#define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
-#define SCREEN_ADDRESS 0x3D /// See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
-// Adafruit_SSD1306* display = new Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire1, OLED_RESET); // some boards use Wire, some use Wire1
-Adafruit_SSD1306* display = NULL;
+// ESPUI Interface IDs
+uint16_t ui_time;
+uint16_t ui_date;
+uint16_t ui_timezone;
+uint16_t ui_uptime;
+uint16_t ui_last_sync;
 
 // A tricky way to force arduino to reboot
 // by accessing a protected memory address
@@ -75,7 +71,7 @@ void time_sync_notification_cb(struct timeval *tv) {
 // This is called when the device cannot connect to wifi.
 void accesspointCallback(WiFiManager*) {
   Serial.println("Connect to WWVB with another device to set wifi configuration.");
-  updateOptionalDisplay("SSID: WWVB", NULL, "Use your phone", "to setup WiFi.");
+  Serial.println("Connect to SSID: WatchTower with another device to set wifi configuration.");
 }
 
 void setup() {
@@ -90,14 +86,6 @@ void setup() {
 
   if( display ) {
     // Initialize optional I2c display
-    display->begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS);
-    display->setTextSize(1);      // Normal 1:1 pixel scale
-    display->setTextColor(SSD1306_WHITE); // Draw white text
-    display->cp437(true);         // Use full 256 char 'Code Page 437' font
-    updateOptionalDisplay(NULL, NULL, NULL, "Connecting...");
-  }
-
-  // hack for this on esp32 qt py?
   // E (14621) rmt: rmt_new_tx_channel(269): not able to power down in light sleep
   digitalWrite(PIN_ANTENNA, 0);
 
@@ -108,14 +96,28 @@ void setup() {
   // If no wifi, start up an SSID called "WWVB" so
   // the user can configure wifi using their phone.
   wifiManager.setAPCallback(accesspointCallback);
-  wifiManager.autoConnect("WWVB");
+  wifiManager.autoConnect("WatchTower");
 
-  updateOptionalDisplay(NULL, NULL, NULL, "Syncing time...");
+  // --- ESPUI SETUP ---
+  ESPUI.setVerbosity(Verbosity::Quiet);
+  
+  // Create Labels
+  ui_time = ESPUI.label("Current Time", ControlColor::Turquoise, "Loading...");
+  ui_date = ESPUI.label("Date", ControlColor::Emerald, "Loading...");
+  ui_timezone = ESPUI.label("Timezone", ControlColor::Peterriver, timezone);
+  ui_uptime = ESPUI.label("System Uptime", ControlColor::Carrot, "0s");
+  ui_last_sync = ESPUI.label("Last NTP Sync", ControlColor::Alizarin, "Pending...");
+
+  // You may disable the internal webserver by commenting out this line
+  ESPUI.begin("WatchTower");
+  
+  // --- TIME SYNC ---
 
   // Connect to network time server
   // By default, it will resync every few hours
   sntp_set_time_sync_notification_cb(time_sync_notification_cb);
   configTzTime(timezone, ntpServer);
+  
   struct tm timeinfo;
   if(!getLocalTime(&timeinfo)){
     Serial.println("Failed to obtain time");
@@ -143,6 +145,7 @@ void loop() {
   struct tm buf_now_utc; // current time in UTC
   struct tm buf_now_local; // current time in localtime
   struct tm buf_today_start, buf_tomorrow_start; // start of today and tomrrow in localtime
+  static int prev_second_display = -1; // for tracking UI updates
 
   gettimeofday(&now,NULL);
   localtime_r(&now.tv_sec, &buf_now_local);
@@ -173,6 +176,7 @@ void loop() {
     buf_tomorrow_start.tm_isdst
     );
 
+  // --- UI UPDATE LOGIC ---
   if( logicValue != prevLogicValue ) {
     ledcWrite(PIN_ANTENNA, dutyCycle(logicValue));  // Update the duty cycle of the PWM
 
@@ -198,31 +202,37 @@ void loop() {
     strftime(lastSyncStringBuff, sizeof(lastSyncStringBuff), "%b %d %H:%M", &buf_lastSync);
     Serial.printf("%s [last sync %s]: %s\n",timeStringBuff2, lastSyncStringBuff, logicValue ? "1" : "0");
 
-    long uptime = millis()/1000;
-    char line1Buf[100], line2Buf[100], line3Buf[100], line4Buf[100];
-    strftime(line1Buf, sizeof(line1Buf), "%I:%M %p", &buf_now_local);
-    strftime(line2Buf, sizeof(line2Buf), "%b %d", &buf_now_local);
-    sprintf(line3Buf, "Uptime: %ld secs\n", uptime);
-    strftime(line4Buf, sizeof(line4Buf), "Sync: %b %d %H:%M", &buf_lastSync);
+    pixels.show();  
 
-    // update the optional I2c display for debugging
-    // Does nothing if no display connected
-    updateOptionalDisplay(
-      line1Buf,
-      line2Buf,
-      line3Buf,
-      line4Buf
-    );
+    
+    // Time
+    char buf[50];
+    strftime(buf, sizeof(buf), "%H:%M:%S", &buf_now_local);
+    ESPUI.print(ui_time, buf);
 
-    // If no sync in last 4h, set the pixel to red and reboot
+    // Date
+    strftime(buf, sizeof(buf), "%A, %B %d %Y", &buf_now_local);
+    ESPUI.print(ui_date, buf);
+
+    // Uptime
+    long uptime = millis() / 1000;
+    int up_h = uptime / 3600;
+    int up_m = (uptime % 3600) / 60;
+    int up_s = uptime % 60;
+    snprintf(buf, sizeof(buf), "%02dh %02dm %02ds", up_h, up_m, up_s);
+    ESPUI.print(ui_uptime, buf);
+
+    // Last Sync
+    strftime(buf, sizeof(buf), "%b %d %H:%M", &buf_lastSync);
+    ESPUI.print(ui_last_sync, buf);
+
+    // Check for stale sync (4 hours)
     if( now.tv_sec - lastSync.tv_sec > 60 * 60 * 4 ) {
       Serial.println("Last sync more than four hours ago, rebooting.");
       pixels.setPixelColor(0, COLOR_ERROR );
       delay(3000);
       forceReboot();
     }
-
-    pixels.show();  
   }  
 }
 
@@ -447,21 +457,5 @@ bool wwvbLogicSignal(
 
 static inline int is_leap_year(int year) {
     return (year % 4 == 0) && (year % 100 != 0 || year % 400 == 0);
-}
-
 static inline void updateOptionalDisplay(const char* line1, const char* line2, const char* line3, const char* line4) {
-  if( !display ) 
-    return;
-
-  display->clearDisplay();
-  display->setTextSize(2);
-  display->setCursor(0, 0);     // Start at top-left corner
-  display->println(line1 != NULL ? line1 : "");
-  display->println(line2 != NULL ? line2 : "");
-  display->setTextSize(1);
-  display->println("");
-  display->println(line3 != NULL ? line3 : "");
-  display->println(line4 != NULL ? line4 : "");
-  display->display();
 }
-
