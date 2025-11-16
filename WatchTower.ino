@@ -191,7 +191,6 @@ void loop() {
     } else {
       pixels.clear();
     }
-    pixels.show();  
 
     // do any logging after we set the bit to not slow anything down,
     // serial port I/O is slow!
