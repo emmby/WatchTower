@@ -1,4 +1,11 @@
 // INSTRUCTIONS
+// - Add the following dependencies to your Arduino libraries:
+//     - Adafruit NeoPixel ~1.15.2
+//     - ESPUI ~2.2.4
+//     - ESP32Async / ESP Async WebServer ~3.9.0
+//     - ESP32Async / Async TCP ~3.4.9
+//     - WiFiManager ~2.0.17
+//     - ArduinoMDNS ~1.0.0
 // - set the PIN_ANTENNA to desired output pin
 // - set the timezone as desired
 // - download and run the code on your device
@@ -9,6 +16,9 @@
 // transferable to other components:
 // - Adafruit Qt Py ESP32 Pico: https://www.adafruit.com/product/5395
 // - Adafruit DRV8833 breakout: https://www.adafruit.com/product/3297
+// Also tested on
+// - Adafruit ESP32 Feather v2
+// - Arduino Nano ESP32 (via wokwi)
 
 #include <WiFiManager.h>
 #include <Adafruit_NeoPixel.h>
