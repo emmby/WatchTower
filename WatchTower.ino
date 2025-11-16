@@ -26,8 +26,8 @@
 #include <ESPUI.h>
 #include <WiFiUdp.h>
 #include <ArduinoMDNS.h>
-#include "time.h"
-#include "esp_sntp.h"
+#include <time.h>
+#include <esp_sntp.h>
 
 // Flip to false to disable the built-in web ui.
 // You might want to do this to avoid leaving unnecessary open ports on your network.
@@ -69,11 +69,13 @@ WiFiUDP udp;
 MDNS mdns(udp);
 bool logicValue = 0; // TODO rename
 struct timeval lastSync;
+WWVB_T broadcast[60];
 
 // ESPUI Interface IDs
 uint16_t ui_time;
 uint16_t ui_date;
 uint16_t ui_timezone;
+uint16_t ui_broadcast;
 uint16_t ui_uptime;
 uint16_t ui_last_sync;
 
@@ -114,6 +116,7 @@ void setup() {
   wifiManager.setAPCallback(accesspointCallback);
   wifiManager.autoConnect("WatchTower");
 
+  clearBroadcastValues();
 
   // --- ESPUI SETUP ---
   ESPUI.setVerbosity(Verbosity::Quiet);
@@ -122,6 +125,7 @@ void setup() {
   ui_time = ESPUI.label("Current Time", ControlColor::Turquoise, "Loading...");
   ui_date = ESPUI.label("Date", ControlColor::Emerald, "Loading...");
   ui_timezone = ESPUI.label("Timezone", ControlColor::Peterriver, timezone);
+  ui_broadcast = ESPUI.label("Broadcast", ControlColor::Sunflower, "");
   ui_uptime = ESPUI.label("System Uptime", ControlColor::Carrot, "0s");
   ui_last_sync = ESPUI.label("Last NTP Sync", ControlColor::Alizarin, "Pending...");
 
@@ -208,11 +212,11 @@ void loop() {
 
     // light up the pixel if desired
     if( pixel ) {
-        if( logicValue == 1 ) {
+      if( logicValue == 1 ) {
         pixel->setPixelColor(0, COLOR_TRANSMIT ); // don't call show yet, the color may change
-        } else {
+      } else {
         pixel->clear();
-        }
+      }
     }
 
     // do any logging after we set the bit to not slow anything down,
@@ -233,13 +237,33 @@ void loop() {
     // --- UPDATE THE WEB UI ---
 
     // Time
-    char buf[50];
+    char buf[62];
     strftime(buf, sizeof(buf), "%H:%M:%S%z %Z", &buf_now_local);
     ESPUI.print(ui_time, buf);
 
     // Date
     strftime(buf, sizeof(buf), "%A, %B %d %Y", &buf_now_local);
     ESPUI.print(ui_date, buf);
+
+    // Broadcast window
+    for( int i=0; i<60; ++i ) { // TODO leap seconds
+      switch(broadcast[i]) {
+        case WWVB_T::MARK:
+            buf[i] = 'M';
+            break;
+        case WWVB_T::ZERO:
+            buf[i] = '0';
+            break;
+        case WWVB_T::ONE:
+            buf[i] = '1';
+            break;
+        default:
+            buf[i] = ' ';
+            break;
+      }
+    }
+    ESPUI.print(ui_broadcast, buf);
+
 
     // Uptime
     long uptime = millis() / 1000;
@@ -475,6 +499,11 @@ bool wwvbLogicSignal(
             break;
     }
 
+    if(second == 0) {
+        clearBroadcastValues();
+    }
+    broadcast[second] = bit;
+
     // Convert a wwvb zero, one, or mark to the appropriate pulse width
     // zero: low 200ms, high 800ms
     // one: low 500ms, high 500ms
@@ -490,4 +519,10 @@ bool wwvbLogicSignal(
 
 static inline int is_leap_year(int year) {
     return (year % 4 == 0) && (year % 100 != 0 || year % 400 == 0);
+}
+
+void clearBroadcastValues() {
+    for(int i=0; i<sizeof(broadcast)/sizeof(broadcast[0]); ++i) {
+        broadcast[i] = (WWVB_T)-1; // -1 isn't legal but that's okay, we just need an invalid value
+    }
 }
