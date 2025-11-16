@@ -42,12 +42,12 @@ const int KHZ_60 = 60000;
 const char* ntpServer = "pool.ntp.org";
 
 // Configure the optional onboard neopixel
+Adafruit_NeoPixel* pixel = new Adafruit_NeoPixel(1, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800);
 const uint8_t LED_BRIGHTNESS = 10; // very dim, 0-255
-Adafruit_NeoPixel pixels(1, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800);
-const uint32_t COLOR_READY = pixels.Color(0, 60, 0); // green https://share.google/4WKm4XDkH9tfm3ESC
-const uint32_t COLOR_LOADING = pixels.Color(60, 32, 0); // orange https://share.google/7tT5GPxskZi8t8qmx
-const uint32_t COLOR_ERROR = pixels.Color(150, 0, 0); // red https://share.google/nx2jWYSoGtl0opkzL
-const uint32_t COLOR_TRANSMIT = pixels.Color(32, 0, 0); // dim red https://share.google/wYFYM3t1kDeOJfr1U
+const uint32_t COLOR_READY = pixel->Color(0, 60, 0); // green https://share.google/4WKm4XDkH9tfm3ESC
+const uint32_t COLOR_LOADING = pixel->Color(60, 32, 0); // orange https://share.google/7tT5GPxskZi8t8qmx
+const uint32_t COLOR_ERROR = pixel->Color(150, 0, 0); // red https://share.google/nx2jWYSoGtl0opkzL
+const uint32_t COLOR_TRANSMIT = pixel->Color(32, 0, 0); // dim red https://share.google/wYFYM3t1kDeOJfr1U
 
 WiFiManager wifiManager;
 WiFiUDP udp;
@@ -78,12 +78,12 @@ void accesspointCallback(WiFiManager*) {
 void setup() {
   Serial.begin(115200);
   delay(1000);
-  pixels.begin();
+  pixel->begin();
 
   pinMode(PIN_ANTENNA, OUTPUT);
-  pixels.setBrightness(LED_BRIGHTNESS); // very dim
-  pixels.setPixelColor(0, COLOR_LOADING );
-  pixels.show();
+  pixel->setBrightness(LED_BRIGHTNESS); // very dim
+  pixel->setPixelColor(0, COLOR_LOADING );
+  pixel->show();
 
   // E (14621) rmt: rmt_new_tx_channel(269): not able to power down in light sleep
   digitalWrite(PIN_ANTENNA, 0);
@@ -125,8 +125,8 @@ void setup() {
   struct tm timeinfo;
   if(!getLocalTime(&timeinfo)){
     Serial.println("Failed to obtain time");
-    pixels.setPixelColor(0, COLOR_ERROR );
-    pixels.show();
+    pixel->setPixelColor(0, COLOR_ERROR );
+    pixel->show();
     delay(3000);
     ESP.restart();
   }
@@ -136,12 +136,12 @@ void setup() {
   ledcAttach(PIN_ANTENNA, KHZ_60, 8);
 
   // green means go
-  pixels.setPixelColor(0, COLOR_READY );
-  pixels.show();
+  pixel->setPixelColor(0, COLOR_READY );
+  pixel->show();
   delay(3000);
 
-  pixels.clear();  
-  pixels.show();
+  pixel->clear();  
+  pixel->show();
 }
 
 void loop() {
@@ -188,9 +188,9 @@ void loop() {
 
     // light up the pixel if desired
     if( logicValue == 1 ) {
-      pixels.setPixelColor(0, COLOR_TRANSMIT ); // don't call show yet, the color may change
+      pixel->setPixelColor(0, COLOR_TRANSMIT ); // don't call show yet, the color may change
     } else {
-      pixels.clear();
+      pixel->clear();
     }
 
     // do any logging after we set the bit to not slow anything down,
@@ -234,12 +234,12 @@ void loop() {
     // Check for stale sync (4 hours)
     if( now.tv_sec - lastSync.tv_sec > 60 * 60 * 4 ) {
       Serial.println("Last sync more than four hours ago, rebooting.");
-      pixels.setPixelColor(0, COLOR_ERROR );
+      pixel->setPixelColor(0, COLOR_ERROR );
       delay(3000);
       ESP.restart();
     }
 
-    pixels.show();
+    pixel->show();
   }  
 }
 
