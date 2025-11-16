@@ -62,10 +62,6 @@ uint16_t ui_timezone;
 uint16_t ui_uptime;
 uint16_t ui_last_sync;
 
-// A tricky way to force arduino to reboot
-// by accessing a protected memory address
-void(* forceReboot) (void) = 0;
-
 // A callback that tracks when we last sync'ed the
 // time with the ntp server
 void time_sync_notification_cb(struct timeval *tv) {
@@ -132,7 +128,7 @@ void setup() {
     pixels.setPixelColor(0, COLOR_ERROR );
     pixels.show();
     delay(3000);
-    forceReboot();
+    ESP.restart();
   }
   Serial.println("Got the time from NTP");
 
@@ -240,7 +236,7 @@ void loop() {
       Serial.println("Last sync more than four hours ago, rebooting.");
       pixels.setPixelColor(0, COLOR_ERROR );
       delay(3000);
-      forceReboot();
+      ESP.restart();
     }
 
     pixels.show();
