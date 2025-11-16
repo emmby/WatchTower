@@ -2,20 +2,18 @@
 // - set the PIN_ANTENNA to desired output pin
 // - set the timezone as desired
 // - download and run the code on your device
-// - connect your phone to "WWVB" to set the wifi config for the device
+// - connect your phone to "WatchTower" to set the wifi config for the device
+// - connect to the internal webserver to view current status
 
 // Designed for the following, but should be easily
 // transferable to other components:
 // - Adafruit Qt Py ESP32 Pico: https://www.adafruit.com/product/5395
 // - Adafruit DRV8833 breakout: https://www.adafruit.com/product/3297
-// - (optional) Adafruit I2c display: https://www.adafruit.com/product/326
 
 #include <WiFiManager.h>
 #include <Adafruit_NeoPixel.h>
 #include <SPI.h>
-#include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+#include <ESPUI.h>
 #include "time.h"
 #include "esp_sntp.h"
 
@@ -70,7 +68,6 @@ void time_sync_notification_cb(struct timeval *tv) {
 // starts up an access point for wifi configuration.
 // This is called when the device cannot connect to wifi.
 void accesspointCallback(WiFiManager*) {
-  Serial.println("Connect to WWVB with another device to set wifi configuration.");
   Serial.println("Connect to SSID: WatchTower with another device to set wifi configuration.");
 }
 
@@ -84,8 +81,6 @@ void setup() {
   pixels.setPixelColor(0, COLOR_LOADING );
   pixels.show();
 
-  if( display ) {
-    // Initialize optional I2c display
   // E (14621) rmt: rmt_new_tx_channel(269): not able to power down in light sleep
   digitalWrite(PIN_ANTENNA, 0);
 
@@ -93,7 +88,7 @@ void setup() {
   WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
 
   // Connect to WiFi using // https://github.com/tzapu/WiFiManager 
-  // If no wifi, start up an SSID called "WWVB" so
+  // If no wifi, start up an SSID called "WatchTower" so
   // the user can configure wifi using their phone.
   wifiManager.setAPCallback(accesspointCallback);
   wifiManager.autoConnect("WatchTower");
@@ -457,5 +452,4 @@ bool wwvbLogicSignal(
 
 static inline int is_leap_year(int year) {
     return (year % 4 == 0) && (year % 100 != 0 || year % 400 == 0);
-static inline void updateOptionalDisplay(const char* line1, const char* line2, const char* line3, const char* line4) {
 }
