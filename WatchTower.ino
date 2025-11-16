@@ -19,6 +19,10 @@
 #include "time.h"
 #include "esp_sntp.h"
 
+// Flip to false to disable the built-in web ui.
+// You might want to do this to avoid leaving unnecessary open ports on your network.
+const bool ENABLE_WEB_UI = true;
+
 // Set this to the pin your antenna is connected on
 const int PIN_ANTENNA = 13;
 
@@ -97,9 +101,6 @@ void setup() {
   wifiManager.setAPCallback(accesspointCallback);
   wifiManager.autoConnect("WatchTower");
 
-  mdns.begin(WiFi.localIP(), "watchtower");
-  Serial.println("Connect to http://watchtower.local for the console");
-
 
   // --- ESPUI SETUP ---
   ESPUI.setVerbosity(Verbosity::Quiet);
@@ -112,7 +113,11 @@ void setup() {
   ui_last_sync = ESPUI.label("Last NTP Sync", ControlColor::Alizarin, "Pending...");
 
   // You may disable the internal webserver by commenting out this line
-  ESPUI.begin("WatchTower");
+  if( ENABLE_WEB_UI ) {
+    mdns.begin(WiFi.localIP(), "watchtower");
+    Serial.println("Connect to http://watchtower.local for the console");
+    ESPUI.begin("WatchTower");
+  }
   
   // --- TIME SYNC ---
 
