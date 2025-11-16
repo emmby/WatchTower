@@ -98,7 +98,7 @@ void setup() {
   wifiManager.autoConnect("WatchTower");
 
   mdns.begin(WiFi.localIP(), "watchtower");
-  mdns.addServiceRecord("watchtower._http", 80, MDNSServiceTCP);
+  Serial.println("Connect to http://watchtower.local for the console");
 
 
   // --- ESPUI SETUP ---
@@ -196,7 +196,7 @@ void loop() {
     // serial port I/O is slow!
     char timeStringBuff[100]; // Buffer to hold the formatted time string
     char timeStringBuff2[100];
-    char timeStringBuff3[10];
+    char timeStringBuff3[20];
     strftime(timeStringBuff, sizeof(timeStringBuff), "%A, %B %d %Y %H:%M:%S", &buf_now_local); // time
     strftime(timeStringBuff3, sizeof(timeStringBuff3), "%z %Z", &buf_now_local); // timezone
     sprintf(timeStringBuff2,"%s.%03d%s", timeStringBuff, now.tv_usec/1000, timeStringBuff3 ); // time+millis+tz
@@ -237,6 +237,8 @@ void loop() {
       delay(3000);
       forceReboot();
     }
+
+    pixels.show();
   }  
 }
 
