@@ -8,7 +8,7 @@
 //     - ArduinoMDNS ~1.0.0
 // - set the PIN_ANTENNA to desired output pin
 // - set the timezone as desired
-// - download and run the code on your device
+// - build and run the code on your device
 // - connect your phone to "WatchTower" to set the wifi config for the device
 // - connect to http://watchtower.local to view current status
 
