@@ -3,7 +3,7 @@
 // - set the timezone as desired
 // - download and run the code on your device
 // - connect your phone to "WatchTower" to set the wifi config for the device
-// - connect to the internal webserver to view current status
+// - connect to http://watchtower.local to view current status
 
 // Designed for the following, but should be easily
 // transferable to other components:
@@ -191,6 +191,7 @@ void loop() {
     } else {
       pixels.clear();
     }
+    pixels.show();  
 
     // do any logging after we set the bit to not slow anything down,
     // serial port I/O is slow!
@@ -207,12 +208,11 @@ void loop() {
     strftime(lastSyncStringBuff, sizeof(lastSyncStringBuff), "%b %d %H:%M", &buf_lastSync);
     Serial.printf("%s [last sync %s]: %s\n",timeStringBuff2, lastSyncStringBuff, logicValue ? "1" : "0");
 
-    pixels.show();  
+    // --- UPDATE THE WEB UI ---
 
-    
     // Time
     char buf[50];
-    strftime(buf, sizeof(buf), "%H:%M:%S", &buf_now_local);
+    strftime(buf, sizeof(buf), "%H:%M:%S%z %Z", &buf_now_local);
     ESPUI.print(ui_time, buf);
 
     // Date
