@@ -14,6 +14,8 @@
 #include <Adafruit_NeoPixel.h>
 #include <SPI.h>
 #include <ESPUI.h>
+#include <WiFiUdp.h>
+#include <ArduinoMDNS.h>
 #include "time.h"
 #include "esp_sntp.h"
 
@@ -44,6 +46,8 @@ const uint32_t COLOR_ERROR = pixels.Color(150, 0, 0); // red https://share.googl
 const uint32_t COLOR_TRANSMIT = pixels.Color(32, 0, 0); // dim red https://share.google/wYFYM3t1kDeOJfr1U
 
 WiFiManager wifiManager;
+WiFiUDP udp;
+MDNS mdns(udp);
 bool logicValue = 0; // TODO rename
 struct timeval lastSync;
 
@@ -93,6 +97,10 @@ void setup() {
   wifiManager.setAPCallback(accesspointCallback);
   wifiManager.autoConnect("WatchTower");
 
+  mdns.begin(WiFi.localIP(), "watchtower");
+  mdns.addServiceRecord("watchtower._http", 80, MDNSServiceTCP);
+
+
   // --- ESPUI SETUP ---
   ESPUI.setVerbosity(Verbosity::Quiet);
   
@@ -136,6 +144,8 @@ void setup() {
 }
 
 void loop() {
+  mdns.run();
+
   struct timeval now; // current time in seconds / millis
   struct tm buf_now_utc; // current time in UTC
   struct tm buf_now_local; // current time in localtime
