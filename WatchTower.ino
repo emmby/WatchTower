@@ -234,48 +234,51 @@ void loop() {
     strftime(lastSyncStringBuff, sizeof(lastSyncStringBuff), "%b %d %H:%M", &buf_lastSync);
     Serial.printf("%s [last sync %s]: %s\n",timeStringBuff2, lastSyncStringBuff, logicValue ? "1" : "0");
 
-    // --- UPDATE THE WEB UI ---
+    static int prevSecond = -1;
+    if( prevSecond != buf_now_utc.tm_sec ) {
+        // --- UPDATE THE WEB UI ---
 
-    // Time
-    char buf[62];
-    strftime(buf, sizeof(buf), "%H:%M:%S%z %Z", &buf_now_local);
-    ESPUI.print(ui_time, buf);
+        // Time
+        char buf[62];
+        strftime(buf, sizeof(buf), "%H:%M:%S%z %Z", &buf_now_local);
+        ESPUI.print(ui_time, buf);
 
-    // Date
-    strftime(buf, sizeof(buf), "%A, %B %d %Y", &buf_now_local);
-    ESPUI.print(ui_date, buf);
+        // Date
+        strftime(buf, sizeof(buf), "%A, %B %d %Y", &buf_now_local);
+        ESPUI.print(ui_date, buf);
 
-    // Broadcast window
-    for( int i=0; i<60; ++i ) { // TODO leap seconds
-      switch(broadcast[i]) {
-        case WWVB_T::MARK:
-            buf[i] = 'M';
-            break;
-        case WWVB_T::ZERO:
-            buf[i] = '0';
-            break;
-        case WWVB_T::ONE:
-            buf[i] = '1';
-            break;
-        default:
-            buf[i] = ' ';
-            break;
-      }
+        // Broadcast window
+        for( int i=0; i<60; ++i ) { // TODO leap seconds
+        switch(broadcast[i]) {
+            case WWVB_T::MARK:
+                buf[i] = 'M';
+                break;
+            case WWVB_T::ZERO:
+                buf[i] = '0';
+                break;
+            case WWVB_T::ONE:
+                buf[i] = '1';
+                break;
+            default:
+                buf[i] = ' ';
+                break;
+        }
+        }
+        ESPUI.print(ui_broadcast, buf);
+
+
+        // Uptime
+        long uptime = millis() / 1000;
+        int up_h = uptime / 3600;
+        int up_m = (uptime % 3600) / 60;
+        int up_s = uptime % 60;
+        snprintf(buf, sizeof(buf), "%02dh %02dm %02ds", up_h, up_m, up_s);
+        ESPUI.print(ui_uptime, buf);
+
+        // Last Sync
+        strftime(buf, sizeof(buf), "%b %d %H:%M", &buf_lastSync);
+        ESPUI.print(ui_last_sync, buf);
     }
-    ESPUI.print(ui_broadcast, buf);
-
-
-    // Uptime
-    long uptime = millis() / 1000;
-    int up_h = uptime / 3600;
-    int up_m = (uptime % 3600) / 60;
-    int up_s = uptime % 60;
-    snprintf(buf, sizeof(buf), "%02dh %02dm %02ds", up_h, up_m, up_s);
-    ESPUI.print(ui_uptime, buf);
-
-    // Last Sync
-    strftime(buf, sizeof(buf), "%b %d %H:%M", &buf_lastSync);
-    ESPUI.print(ui_last_sync, buf);
 
     // Check for stale sync (4 hours)
     if( now.tv_sec - lastSync.tv_sec > 60 * 60 * 4 ) {
