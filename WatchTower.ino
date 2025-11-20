@@ -28,6 +28,7 @@
 #include <ArduinoMDNS.h>
 #include <time.h>
 #include <esp_sntp.h>
+#include "customJS.h"
 
 // Flip to false to disable the built-in web ui.
 // You might want to do this to avoid leaving unnecessary open ports on your network.
@@ -128,6 +129,8 @@ void setup() {
   ui_broadcast = ESPUI.label("Broadcast", ControlColor::Sunflower, "");
   ui_uptime = ESPUI.label("System Uptime", ControlColor::Carrot, "0s");
   ui_last_sync = ESPUI.label("Last NTP Sync", ControlColor::Alizarin, "Pending...");
+
+  ESPUI.setCustomJS(customJS);
 
   // You may disable the internal webserver by commenting out this line
   if( ENABLE_WEB_UI ) {
