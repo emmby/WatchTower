@@ -4,122 +4,77 @@ const char* customJS = R"(
 // and the bottom row is the second within the minute.
 // the canvas shows the logical high/low pin values.
 // TODO rename function
-// TODO rename spanElement -> element
-function convertToTable(spanElement) { 
-    
-    const characters = Array.from(spanElement.innerHTML);
+/**
+ * Converts a span's text into a visualization containing a Canvas diagram and a Data Table.
+ * @param {HTMLElement} containerSpan - The target DOM element.
+ */
+function convertToTable(containerSpan) {
+    const rawText = containerSpan.textContent;
+    const characters = Array.from(rawText);
 
-    // --- 2. Generate and temporarily insert the Table for accurate measurement ---
+    // --- Configuration ---
+    const CANVAS_HEIGHT = 40;
+    const BOX_HEIGHT = 2;
+    // Maps characters to the percentage of width allocated to the "left" (short) box.
+    // 'M': 80% short, 20% tall. '0': 20% short, 80% tall.
+    const DRAW_RATIOS = { 'M': 0.8, '0': 0.2, '1': 0.5 };
 
-    // Temporarily clear the span and make it a block container for measurement
-    spanElement.innerHTML = '';
-    spanElement.classList.add('visualized-container'); 
-    
-    let dataRowContent = '<tr>';
-    characters.forEach(char => {
-        dataRowContent += `<td>${char}</td>`;
-    });
-    dataRowContent += '</tr>';
+    // --- 1. Setup Container & Generate Table ---
+    containerSpan.classList.add('visualized-container');
 
-    let indexRowContent = '<tr>';
-    characters.forEach((char, index) => {
-        indexRowContent += `<th>${index < 10 ? "0" + index : index}</th>`;
-    });
-    indexRowContent += '</tr>';
+    // Create Table HTML efficiently
+    const dataCells = characters.map(char => `<td>${char}</td>`).join('');
+    const indexCells = characters.map((_, i) => `<th>${String(i).padStart(2, '0')}</th>`).join('');
 
-    // Use a temporary ID for easy selection
-    let tableHTML = '<table id="tempVisualTable" class="char-table">';
-    tableHTML += '<tbody>' + dataRowContent + '</tbody>'; 
-    tableHTML += '<tfoot>' + indexRowContent + '</tfoot>'; 
-    tableHTML += '</table>';
+    const tableHTML = `
+        <table class="char-table">
+            <tbody><tr>${dataCells}</tr></tbody>
+            <tfoot><tr>${indexCells}</tr></tfoot>
+        </table>
+    `;
 
-    // Insert temporarily into the span (which is now the container)
-    spanElement.innerHTML = tableHTML;
-    const table = document.getElementById('tempVisualTable'); 
-    
-    // --- 3. Measure Dimensions using Layout Properties (offsetLeft/offsetWidth) ---
+    // Insert the table immediately. 
+    containerSpan.innerHTML = tableHTML;
+    const table = containerSpan.firstElementChild;
 
-    const charCells = Array.from(table.querySelector('tbody tr').children);
-    
-    // Store cell widths, left positions, and character data for drawing
-    const cellDimensions = charCells.map((cell, index) => {
-        return {
-            // offsetLeft provides the integer x-coordinate relative to the table (parent is the span)
-            left: cell.offsetLeft, 
-            // offsetWidth provides the integer width including padding and borders
-            width: cell.offsetWidth, 
-            char: characters[index]
-        };
-    });
-    
-    // --- 4. Create and configure the Canvas ---
+    // --- 2. Measure Dimensions ---
+    // We map over the cells to get precise pixel measurements based on CSS rendering
+    const cells = Array.from(table.querySelectorAll('tbody td'));
+    const layoutMap = cells.map((cell, index) => ({
+        char: characters[index],
+        left: cell.offsetLeft,
+        width: cell.offsetWidth
+    }));
 
+    // --- 3. Configure Canvas ---
     const canvas = document.createElement('canvas');
-    canvas.width = table.offsetWidth; 
-    canvas.height = 40;
+    canvas.width = table.offsetWidth;
+    canvas.height = CANVAS_HEIGHT;
     const ctx = canvas.getContext('2d');
-    
-    // --- 5. Drawing Logic using Measured Integer Coordinates ---
 
-    const baseLine = canvas.height; // The bottom of the canvas
-    const smallBoxHeight = 2; // 2px high box
+    // --- 4. Draw ---
+    const baseLine = CANVAS_HEIGHT;
 
-    cellDimensions.forEach(dim => {
-        const char = dim.char;
-        const startX = dim.left;
-        const cellWidth = dim.width;
+    layoutMap.forEach(({ char, left, width }) => {
+        const ratio = DRAW_RATIOS[char];
+        
+        // If character is not in our config (e.g., spaces), skip drawing
+        if (ratio === undefined) return;
 
-        // Drawing is bottom-aligned (y-coordinate is relative to baseLine)
-        if (char === 'M') {
-            // M: 2px high (80% left), full height (20% right)
-            
-            // Use Math.round() for the split point to ensure integer width segments
-            const width80 = Math.round(cellWidth * 0.8);
-            const width20 = cellWidth - width80; // Guaranteed to fill the rest of the cell
+        // Calculate split point (floor box vs tall box)
+        const splitWidth = Math.round(width * ratio);
+        const remainingWidth = width - splitWidth;
 
-            // Box 1 (2px high, 80% width, left)
-            ctx.fillRect(startX, baseLine - smallBoxHeight, width80, smallBoxHeight);
+        // Box 1: The short "floor" box (Left side)
+        ctx.fillRect(left, baseLine - BOX_HEIGHT, splitWidth, BOX_HEIGHT);
 
-            // Box 2 (Full height, 20% width, right)
-            ctx.fillRect(startX + width80, baseLine - canvas.height, width20, canvas.height);
-
-        } else if (char === '0') {
-            // 0: 2px high (20% left), full height (80% right)
-
-            const width20 = Math.round(cellWidth * 0.2);
-            const width80 = cellWidth - width20; // Guaranteed to fill the rest of the cell
-            
-            // Box 1 (2px high, 20% width, left)
-            ctx.fillRect(startX, baseLine - smallBoxHeight, width20, smallBoxHeight);
-
-            // Box 2 (Full height, 80% width, right)
-            ctx.fillRect(startX + width20, baseLine - canvas.height, width80, canvas.height);
-
-        } else if (char === '1') {
-            // 1: 2px high (50% left), full height (50% right)
-            
-            const width50_left = Math.round(cellWidth / 2);
-            const width50_right = cellWidth - width50_left; // Guaranteed to fill the rest of the cell
-
-            // Box 1 (2px high, 50% width, left)
-            ctx.fillRect(startX, baseLine - smallBoxHeight, width50_left, smallBoxHeight);
-
-            // Box 2 (Full height, 50% width, right)
-            ctx.fillRect(startX + width50_left, baseLine - canvas.height, width50_right, canvas.height);
-        }
-        // For other values (including spaces), draw nothing.
+        // Box 2: The tall "wall" box (Right side)
+        ctx.fillRect(left + splitWidth, 0, remainingWidth, CANVAS_HEIGHT);
     });
-    
-    // --- 6. Final DOM Update ---
 
-    // Clear the span again (removing the temporary table)
-    spanElement.innerHTML = '';  // TODO why? why not just add the canvas above?
-    
-    // Re-inject the canvas and the table in order
-    spanElement.appendChild(canvas);
-    
-    // Remove temporary ID before final insertion
-    spanElement.appendChild(table);
+    // --- 5. Final Placement ---
+    // This keeps the table in the DOM (preserving state/layout) and adds the canvas above it.
+    containerSpan.prepend(canvas);
 }
 
 // re-draw the label every time it is updated
