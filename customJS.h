@@ -123,29 +123,26 @@ function convertToTable(spanElement) {
 }
 
 // re-draw the label every time it is updated
-var labelObserver = new MutationObserver(mutationsList => {
-    labelObserver.disconnect();
+const masterObserver = new MutationObserver((mutations) => {
     const label = document.getElementById('l1');
+    if (!label) return;
+
+    // If it contains the table we added, ignore this update (it was us!)
+    if (label.querySelector('canvas')) return;    
+
     convertToTable(label);
-    labelObserver.observe(label, {childList:true});
 });
 
-// watch the dom for the label to appear
-var creationObserver = new MutationObserver(() => {
-    const label = document.getElementById('l1');
-    if(label) {
-      creationObserver.disconnect();
-      convertToTable(label);
-      labelObserver.observe(label, {childList: true});
-    }
-});
-
-// enable our observer after all the page content is loaded
+// Start observing the entire DOM
+// (we don't observe just the label element due to the zombie node problem.
+// it works most of the time, but if the browser falls behind eg. while the
+// computer is asleep, it may replace the element on waking up which breaks
+// the observer.)
 window.addEventListener('load', function() {
-  creationObserver.observe(document.body, {
-      childList: true,
-      subtree: true
-  });
+    masterObserver.observe(document.body, {
+        childList: true,    // Detects if #l1 is added/removed
+        subtree: true,      // Detects changes deep inside the DOM
+        characterData: true // Detects text changes inside existing nodes
+    });
 });
-
 )";
