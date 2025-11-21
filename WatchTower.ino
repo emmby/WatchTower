@@ -123,13 +123,14 @@ void setup() {
   ESPUI.setVerbosity(Verbosity::Quiet);
   
   // Create Labels
+  ui_broadcast = ESPUI.label("Broadcast", ControlColor::Sunflower, "");
   ui_time = ESPUI.label("Current Time", ControlColor::Turquoise, "Loading...");
   ui_date = ESPUI.label("Date", ControlColor::Emerald, "Loading...");
   ui_timezone = ESPUI.label("Timezone", ControlColor::Peterriver, timezone);
-  ui_broadcast = ESPUI.label("Broadcast", ControlColor::Sunflower, "");
   ui_uptime = ESPUI.label("System Uptime", ControlColor::Carrot, "0s");
   ui_last_sync = ESPUI.label("Last NTP Sync", ControlColor::Alizarin, "Pending...");
 
+  ESPUI.setPanelWide(ui_broadcast, true);
   ESPUI.setCustomJS(customJS);
 
   // You may disable the internal webserver by commenting out this line
