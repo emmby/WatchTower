@@ -131,6 +131,7 @@ void setup() {
   ui_last_sync = ESPUI.label("Last NTP Sync", ControlColor::Alizarin, "Pending...");
 
   ESPUI.setPanelWide(ui_broadcast, true);
+  ESPUI.setElementStyle(ui_broadcast, "font-family: monospace");
   ESPUI.setCustomJS(customJS);
 
   // You may disable the internal webserver by commenting out this line

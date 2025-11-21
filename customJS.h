@@ -23,7 +23,7 @@ function convertToTable(spanElement) {
 
     let indexRowContent = '<tr>';
     characters.forEach((char, index) => {
-        indexRowContent += `<th>${index}</th>`;
+        indexRowContent += `<th>${index < 10 ? "0" + index : index}</th>`;
     });
     indexRowContent += '</tr>';
 
