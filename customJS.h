@@ -13,7 +13,7 @@ function convertToTable(containerSpan) {
     const characters = Array.from(rawText);
 
     // --- Configuration ---
-    const CANVAS_HEIGHT = 40;
+    const CANVAS_HEIGHT = 30;
     const BOX_HEIGHT = 2;
     // Maps characters to the percentage of width allocated to the "left" (short) box.
     // 'M': 80% short, 20% tall. '0': 20% short, 80% tall.
@@ -21,6 +21,8 @@ function convertToTable(containerSpan) {
 
     // --- 1. Setup Container & Generate Table ---
     containerSpan.classList.add('visualized-container');
+    containerSpan.style.display = 'flex';
+    containerSpan.style.flexDirection = 'column';
 
     // Create Table HTML efficiently
     const dataCells = characters.map(char => `<td>${char}</td>`).join('');

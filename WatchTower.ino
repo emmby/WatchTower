@@ -123,7 +123,7 @@ void setup() {
   ESPUI.setVerbosity(Verbosity::Quiet);
   
   // Create Labels
-  ui_broadcast = ESPUI.label("Broadcast", ControlColor::Sunflower, "");
+  ui_broadcast = ESPUI.label("Broadcast Waveform", ControlColor::Sunflower, "");
   ui_time = ESPUI.label("Current Time", ControlColor::Turquoise, "Loading...");
   ui_date = ESPUI.label("Date", ControlColor::Emerald, "Loading...");
   ui_timezone = ESPUI.label("Timezone", ControlColor::Peterriver, timezone);
