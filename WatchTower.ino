@@ -28,6 +28,7 @@
 #include <ArduinoMDNS.h>
 #include <time.h>
 #include <esp_sntp.h>
+#include "customJS.h"
 
 // Flip to false to disable the built-in web ui.
 // You might want to do this to avoid leaving unnecessary open ports on your network.
@@ -122,12 +123,16 @@ void setup() {
   ESPUI.setVerbosity(Verbosity::Quiet);
   
   // Create Labels
+  ui_broadcast = ESPUI.label("Broadcast Waveform", ControlColor::Sunflower, "");
   ui_time = ESPUI.label("Current Time", ControlColor::Turquoise, "Loading...");
   ui_date = ESPUI.label("Date", ControlColor::Emerald, "Loading...");
   ui_timezone = ESPUI.label("Timezone", ControlColor::Peterriver, timezone);
-  ui_broadcast = ESPUI.label("Broadcast", ControlColor::Sunflower, "");
   ui_uptime = ESPUI.label("System Uptime", ControlColor::Carrot, "0s");
   ui_last_sync = ESPUI.label("Last NTP Sync", ControlColor::Alizarin, "Pending...");
+
+  ESPUI.setPanelWide(ui_broadcast, true);
+  ESPUI.setElementStyle(ui_broadcast, "font-family: monospace");
+  ESPUI.setCustomJS(customJS);
 
   // You may disable the internal webserver by commenting out this line
   if( ENABLE_WEB_UI ) {
@@ -236,6 +241,8 @@ void loop() {
 
     static int prevSecond = -1;
     if( prevSecond != buf_now_utc.tm_sec ) {
+        prevSecond = buf_now_utc.tm_sec;
+
         // --- UPDATE THE WEB UI ---
 
         // Time
