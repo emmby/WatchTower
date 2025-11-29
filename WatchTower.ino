@@ -241,6 +241,8 @@ void loop() {
 
     static int prevSecond = -1;
     if( prevSecond != buf_now_utc.tm_sec ) {
+        prevSecond = buf_now_utc.tm_sec;
+
         // --- UPDATE THE WEB UI ---
 
         // Time
