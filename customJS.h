@@ -52,6 +52,7 @@ function convertToTable(containerSpan) {
     const canvas = document.createElement('canvas');
     canvas.width = table.offsetWidth;
     canvas.height = CANVAS_HEIGHT;
+    canvas.style.marginTop = '5px'
     const ctx = canvas.getContext('2d');
 
     // --- 4. Draw ---
