@@ -12,7 +12,7 @@ function convertToTable(containerSpan) {
     const characters = Array.from(rawText);
 
     // --- Configuration ---
-    const CANVAS_HEIGHT = 30;
+    const CANVAS_HEIGHT = 20;
     const BOX_HEIGHT = 2;
     // Maps characters to the percentage of width allocated to the "left" (short) box.
     // 'M': 80% short, 20% tall. '0': 20% short, 80% tall.
@@ -51,7 +51,6 @@ function convertToTable(containerSpan) {
     const canvas = document.createElement('canvas');
     canvas.width = table.offsetWidth;
     canvas.height = CANVAS_HEIGHT;
-    canvas.style.marginTop = '5px'
     const ctx = canvas.getContext('2d');
 
     // --- 4. Draw ---
@@ -126,6 +125,10 @@ const char* const customCSS = R"(
             color: #00796b;
             font-weight: bold;
             text-align: center;
+        }
+        #id1 canvas {
+            margin-top: 5px;
+            margin-bottom: 3px;
         }
         /* Style to ensure the original span is a block container for the table/canvas */
         .visualized-container {
