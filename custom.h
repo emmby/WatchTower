@@ -1,4 +1,4 @@
-const char* customJS = R"(
+const char* const customJS = R"(
 // redraw the label as a table and a canvas.
 // the table has two rows. the top row are the bit values
 // and the bottom row is the second within the minute.
