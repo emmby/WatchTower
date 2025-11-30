@@ -52,6 +52,7 @@ function convertToTable(containerSpan) {
     canvas.width = table.offsetWidth;
     canvas.height = CANVAS_HEIGHT;
     const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#10B981'; // Emerald Green
 
     // --- 4. Draw ---
     const baseLine = CANVAS_HEIGHT;
