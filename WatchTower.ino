@@ -133,6 +133,7 @@ void setup() {
   ESPUI.setPanelWide(ui_broadcast, true);
   ESPUI.setElementStyle(ui_broadcast, "font-family: monospace");
   ESPUI.setCustomJS(customJS);
+  ESPUI.setCustomCSS(customCSS);
 
   // You may disable the internal webserver by commenting out this line
   if( ENABLE_WEB_UI ) {
