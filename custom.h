@@ -1,9 +1,8 @@
-const char* customJS = R"(
+const char* const customJS = R"(
 // redraw the label as a table and a canvas.
 // the table has two rows. the top row are the bit values
 // and the bottom row is the second within the minute.
 // the canvas shows the logical high/low pin values.
-// TODO rename function
 /**
  * Converts a span's text into a visualization containing a Canvas diagram and a Data Table.
  * @param {HTMLElement} containerSpan - The target DOM element.
@@ -13,7 +12,7 @@ function convertToTable(containerSpan) {
     const characters = Array.from(rawText);
 
     // --- Configuration ---
-    const CANVAS_HEIGHT = 30;
+    const CANVAS_HEIGHT = 20;
     const BOX_HEIGHT = 2;
     // Maps characters to the percentage of width allocated to the "left" (short) box.
     // 'M': 80% short, 20% tall. '0': 20% short, 80% tall.
@@ -52,8 +51,8 @@ function convertToTable(containerSpan) {
     const canvas = document.createElement('canvas');
     canvas.width = table.offsetWidth;
     canvas.height = CANVAS_HEIGHT;
-    canvas.style.marginTop = '5px'
     const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#10B981'; // Emerald Green
 
     // --- 4. Draw ---
     const baseLine = CANVAS_HEIGHT;
@@ -103,4 +102,47 @@ window.addEventListener('load', function() {
         characterData: true // Detects text changes inside existing nodes
     });
 });
+)";
+
+
+
+const char* const customCSS = R"(
+        #id1 td {
+            border: 1px solid #ccc;
+            padding: 4px 6px;
+            font-family: monospace;
+            text-align: center;
+            background-color: #f9f9f9; 
+            color: #864D0F;
+        }
+        #id1 {
+            border-collapse: collapse;
+            /* Ensure table fits content when placed directly in the span */
+            width: auto; 
+        }
+        /* Style for the index row */
+        #id1 tfoot th {
+            background-color: #e0f2f1; /* Light cyan background for index row */
+            color: #00796b;
+            font-weight: bold;
+            text-align: center;
+        }
+        #id1 canvas {
+            margin-top: 5px;
+            margin-bottom: 3px;
+        }
+        /* Style to ensure the original span is a block container for the table/canvas */
+        .visualized-container {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start; /* Aligns content to the left for correct scrolling */
+            width: 100%;
+            padding: 0;
+            border: none;
+            background: none;
+            text-align: left;
+            /* Ensure it allows horizontal scrolling */
+            overflow-x: auto; 
+        }
+
 )";
