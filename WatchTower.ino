@@ -276,10 +276,11 @@ void loop() {
 
         // Uptime
         long uptime = millis() / 1000;
-        int up_h = uptime / 3600;
+        int up_d = uptime / 86400;
+        int up_h = (uptime % 86400) / 3600;
         int up_m = (uptime % 3600) / 60;
         int up_s = uptime % 60;
-        snprintf(buf, sizeof(buf), "%02dh %02dm %02ds", up_h, up_m, up_s);
+        snprintf(buf, sizeof(buf), "%03dd %02dh %02dm %02ds", up_d, up_h, up_m, up_s);
         ESPUI.print(ui_uptime, buf);
 
         // Last Sync
@@ -287,9 +288,9 @@ void loop() {
         ESPUI.print(ui_last_sync, buf);
     }
 
-    // Check for stale sync (4 hours)
-    if( now.tv_sec - lastSync.tv_sec > 60 * 60 * 4 ) {
-      Serial.println("Last sync more than four hours ago, rebooting.");
+    // Check for stale sync (24 hours)
+    if( now.tv_sec - lastSync.tv_sec > 60 * 60 * 24 ) {
+      Serial.println("Last sync more than 24 hours ago, rebooting.");
       if( pixel ) {
         pixel->setPixelColor(0, COLOR_ERROR );
         delay(3000);
