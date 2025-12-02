@@ -21,7 +21,7 @@ function convertToTable(containerSpan) {
     const highlightsConfig = [
         { label: "Minutes", start: 1, end: 8 },
         { label: "Hours", start: 12, end: 18 },
-        { label: "Day of year", start: 22, end: 33 },
+        { label: "Day", start: 22, end: 33 },
         { label: "Year", start: 45, end: 53 },
     ];
 
@@ -192,6 +192,7 @@ const char* const customCSS = R"(
             --highlight-bottom-margin: 4px;
             background-color: transparent; /* No fill */
             border: 2px solid rgba(255, 193, 7, 0.9); /* Opaque yellow outline */
+            padding-left: 2px;
             color: rgba(255, 193, 7, 0.9);
             pointer-events: none; /* Allows interaction with elements beneath it */
             z-index: 5; 
@@ -200,9 +201,12 @@ const char* const customCSS = R"(
             top: 0px;
             margin-top: var(--highlight-top-margin);
             height: calc(100% - var(--highlight-top-margin) - var(--highlight-bottom-margin));
+            font-family: sans-serif;
+            font-size: xx-small;
+            text-transform: uppercase;
         }
         #id1 tr td {
-            height: 40px;
+            height: 30px;
             vertical-align: bottom;
         }
 )";
