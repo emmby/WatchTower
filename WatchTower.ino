@@ -139,7 +139,7 @@ void setup() {
   ESPUI.setVerbosity(Verbosity::Quiet);
   
   // Create Labels
-  ui_broadcast = ESPUI.label("Broadcast Waveform", ControlColor::Sunflower, "");
+  ui_broadcast = ESPUI.label("Broadcast Waveform<a href='https://github.com/emmby/WatchTower#about-wwvb' target='_blank'>ⓘ</a>", ControlColor::Sunflower, "");
   ui_time = ESPUI.label("Current Time", ControlColor::Turquoise, "Loading...");
   ui_date = ESPUI.label("Date", ControlColor::Emerald, "Loading...");
   ui_timezone = ESPUI.label("Timezone", ControlColor::Peterriver, timezone);

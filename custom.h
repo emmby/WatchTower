@@ -209,4 +209,12 @@ const char* const customCSS = R"(
             height: 30px;
             vertical-align: bottom;
         }
+        #id1 h5 a {
+            position: relative;
+            top: -0.5em;
+            font-size: 0.7em;
+            margin-left: 3px;
+            text-decoration: none;
+            color: #FFFFFF;
+        }
 )";
