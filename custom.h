@@ -17,6 +17,15 @@ function convertToTable(containerSpan) {
     // Maps characters to the percentage of width allocated to the "left" (short) box.
     // 'M': 80% short, 20% tall. '0': 20% short, 80% tall.
     const DRAW_RATIOS = { 'M': 0.8, '0': 0.2, '1': 0.5 };
+    const margin = 2; // 2px margin around the highlight content
+    const highlightsConfig = [
+        { label: "Minutes", start: 1, end: 8 },
+        { label: "Hours", start: 12, end: 18 },
+        { label: "Day of year", start: 22, end: 33 },
+        { label: "Year", start: 45, end: 53 },
+    ];
+
+
 
     // --- 1. Setup Container & Generate Table ---
     containerSpan.classList.add('visualized-container');
@@ -74,9 +83,43 @@ function convertToTable(containerSpan) {
         ctx.fillRect(left + splitWidth, 0, remainingWidth, CANVAS_HEIGHT);
     });
 
-    // --- 5. Final Placement ---
+    // --- 5. Outline Creation (Loop for Multiple Ranges) ---
+    const highlightElements = [];
+    
+    // Set tbody to relative positioning context for all highlight elements
+    const tbody = table.querySelector('tbody');
+    tbody.style.position = 'relative'; 
+
+    highlightsConfig.forEach(config => {
+        const { label, start, end } = config;
+
+        const startCellDim = layoutMap[start];
+        const endCellDim = layoutMap[end];
+        
+        const highlightRawEnd = endCellDim.left + endCellDim.width;
+        const highlightRawStart = startCellDim.left;
+        const totalRawWidth = highlightRawEnd - highlightRawStart;
+
+        // 1. Width: Total span of cells minus 2*margin.
+        const highlightWidth = Math.round(totalRawWidth - (margin * 2));
+
+        // 2. Left Position (Relative to tbody/table): Start of cell + 2px margin
+        const highlightLeft = Math.round(highlightRawStart + margin);
+
+        // Create the highlight element
+        const highlightDiv = document.createElement('div');
+        highlightDiv.className = 'highlight-overlay';
+        highlightDiv.textContent = label;
+        highlightDiv.style.left = `${highlightLeft}px`;
+        highlightDiv.style.width = `${highlightWidth}px`;
+
+        highlightElements.push(highlightDiv);
+    });
+
+    // --- 6. Final Placement ---
     // This keeps the table in the DOM (preserving state/layout) and adds the canvas above it.
     containerSpan.prepend(canvas);
+    highlightElements.forEach(highlight => tbody.appendChild(highlight));
 }
 
 // re-draw the label every time it is updated
@@ -144,5 +187,22 @@ const char* const customCSS = R"(
             /* Ensure it allows horizontal scrolling */
             overflow-x: auto; 
         }
-
+        .highlight-overlay {
+            --highlight-top-margin: 4px;
+            --highlight-bottom-margin: 4px;
+            background-color: transparent; /* No fill */
+            border: 2px solid rgba(255, 193, 7, 0.9); /* Opaque yellow outline */
+            color: rgba(255, 193, 7, 0.9);
+            pointer-events: none; /* Allows interaction with elements beneath it */
+            z-index: 5; 
+            position: absolute; /* Positioned relative to the table body */
+            box-sizing: border-box; /* Width/Height include the border thickness */
+            top: 0px;
+            margin-top: var(--highlight-top-margin);
+            height: calc(100% - var(--highlight-top-margin) - var(--highlight-bottom-margin));
+        }
+        #id1 tr td {
+            height: 40px;
+            vertical-align: bottom;
+        }
 )";
