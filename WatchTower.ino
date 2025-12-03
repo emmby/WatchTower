@@ -220,13 +220,13 @@ void loop() {
   const bool prevLogicValue = logicValue;
 
     WWVB_T bit = getWwvbBit(
-    buf_now_utc.tm_hour,
-    buf_now_utc.tm_min,
-    buf_now_utc.tm_sec, 
-    buf_now_utc.tm_yday+1,
-    buf_now_utc.tm_year+1900,
-    buf_today_start.tm_isdst,
-    buf_tomorrow_start.tm_isdst
+        buf_now_utc.tm_hour,
+        buf_now_utc.tm_min,
+        buf_now_utc.tm_sec, 
+        buf_now_utc.tm_yday+1,
+        buf_now_utc.tm_year+1900,
+        buf_today_start.tm_isdst,
+        buf_tomorrow_start.tm_isdst
     );
 
     if(buf_now_utc.tm_sec == 0) {
