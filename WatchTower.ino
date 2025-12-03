@@ -49,6 +49,9 @@ enum WWVB_T {
   MARK = 2,
 };
 
+WWVB_T wwvbCalculateBit(int, int, int, int, int, int, int);
+bool wwvbSignal(WWVB_T, int);
+
 const int KHZ_60 = 60000;
 const char* const ntpServer = "pool.ntp.org";
 
@@ -216,16 +219,22 @@ void loop() {
 
   const bool prevLogicValue = logicValue;
 
-  logicValue = wwvbLogicSignal(
+    WWVB_T bit = wwvbCalculateBit(
     buf_now_utc.tm_hour,
     buf_now_utc.tm_min,
     buf_now_utc.tm_sec, 
-    now.tv_usec/1000,
     buf_now_utc.tm_yday+1,
     buf_now_utc.tm_year+1900,
     buf_today_start.tm_isdst,
     buf_tomorrow_start.tm_isdst
     );
+
+    if(buf_now_utc.tm_sec == 0) {
+        clearBroadcastValues();
+    }
+    broadcast[buf_now_utc.tm_sec] = bit;
+
+    logicValue = wwvbSignal(bit, now.tv_usec/1000);
 
   // --- UI UPDATE LOGIC ---
   if( logicValue != prevLogicValue ) {
@@ -321,14 +330,12 @@ void loop() {
 }
 
 
-// Returns a logical high or low to indicate whether the
-// PWM signal should be high or low based on the current time
+// Returns the WWVB bit type for the given time
 // https://www.nist.gov/pml/time-and-frequency-division/time-distribution/radio-station-wwvb/wwvb-time-code-format
-bool wwvbLogicSignal(
+WWVB_T wwvbCalculateBit(
     int hour,                // 0 - 23
     int minute,              // 0 - 59
     int second,              // 0 - 59 (leap 60)
-    int millis,
     int yday,                // days since January 1 eg. Jan 1 is 0
     int year,                // year since 0, eg. 2025
     int today_start_isdst,   // was this morning DST?
@@ -519,12 +526,13 @@ bool wwvbLogicSignal(
             bit = WWVB_T::MARK;
             break;
     }
+    return bit;
+}
 
-    if(second == 0) {
-        clearBroadcastValues();
-    }
-    broadcast[second] = bit;
-
+// Returns a logical high or low to indicate whether the
+// PWM signal should be high or low based on the current time
+// https://www.nist.gov/pml/time-and-frequency-division/time-distribution/radio-station-wwvb/wwvb-time-code-format
+bool wwvbSignal(WWVB_T bit, int millis) {
     // Convert a wwvb zero, one, or mark to the appropriate pulse width
     // zero: low 200ms, high 800ms
     // one: low 500ms, high 500ms

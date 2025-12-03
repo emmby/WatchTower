@@ -72,7 +72,7 @@ bool getLocalTime(struct tm* info, uint32_t ms = 5000) {
 void sntp_set_time_sync_notification_cb(sntp_sync_time_cb_t callback) {}
 
 // Forward declarations for functions in WatchTower.ino that are used before definition
-bool wwvbLogicSignal(int, int, int, int, int, int, int, int);
+// (None needed as they are in WatchTower.ino now)
 
 // Rename timezone to avoid conflict with system symbol
 #define timezone my_timezone
@@ -148,20 +148,26 @@ void test_serial_date_output(void) {
 void test_wwvb_logic_signal(void) {
     // Test ZERO bit (e.g. second 4 is always ZERO/Blank)
     // Expect: False for < 200ms, True for >= 200ms
-    TEST_ASSERT_FALSE(wwvbLogicSignal(0, 0, 4, 199, 0, 2025, 0, 0));
-    TEST_ASSERT_TRUE(wwvbLogicSignal(0, 0, 4, 200, 0, 2025, 0, 0));
+    WWVB_T bit = wwvbCalculateBit(0, 0, 4, 0, 2025, 0, 0);
+    TEST_ASSERT_EQUAL(WWVB_T::ZERO, bit);
+    TEST_ASSERT_FALSE(wwvbSignal(bit, 199));
+    TEST_ASSERT_TRUE(wwvbSignal(bit, 200));
 
     // Test ONE bit (e.g. second 1, minute 40 -> bit 2 is 1)
     // Minute 40 = 101000 binary? No. 40 / 10 = 4. 4 in binary is 100.
     // Second 1 checks bit 2 of (minute/10). (4 >> 2) & 1 = 1. So it's a ONE.
     // Expect: False for < 500ms, True for >= 500ms
-    TEST_ASSERT_FALSE(wwvbLogicSignal(0, 40, 1, 499, 0, 2025, 0, 0));
-    TEST_ASSERT_TRUE(wwvbLogicSignal(0, 40, 1, 500, 0, 2025, 0, 0));
+    bit = wwvbCalculateBit(0, 40, 1, 0, 2025, 0, 0);
+    TEST_ASSERT_EQUAL(WWVB_T::ONE, bit);
+    TEST_ASSERT_FALSE(wwvbSignal(bit, 499));
+    TEST_ASSERT_TRUE(wwvbSignal(bit, 500));
 
     // Test MARK bit (e.g. second 0 is always MARK)
     // Expect: False for < 800ms, True for >= 800ms
-    TEST_ASSERT_FALSE(wwvbLogicSignal(0, 0, 0, 799, 0, 2025, 0, 0));
-    TEST_ASSERT_TRUE(wwvbLogicSignal(0, 0, 0, 800, 0, 2025, 0, 0));
+    bit = wwvbCalculateBit(0, 0, 0, 0, 2025, 0, 0);
+    TEST_ASSERT_EQUAL(WWVB_T::MARK, bit);
+    TEST_ASSERT_FALSE(wwvbSignal(bit, 799));
+    TEST_ASSERT_TRUE(wwvbSignal(bit, 800));
 }
 
 void test_wwvb_frame_encoding(void) {
@@ -192,31 +198,19 @@ void test_wwvb_frame_encoding(void) {
         "00"        // 57-58 (DST)
         "M";        // 59
 
+
     for (int i = 0; i < 60; ++i) {
         if (expected[i] == '?') continue;
 
-        // Determine bit type from wwvbLogicSignal
-        // ZERO: High at 200ms (Low < 200)
-        // ONE: High at 500ms (Low < 500)
-        // MARK: High at 800ms (Low < 800)
-        
-        bool at200 = wwvbLogicSignal(7, 30, i, 200, 66, 2008, 0, 0);
-        bool at500 = wwvbLogicSignal(7, 30, i, 500, 66, 2008, 0, 0);
-        bool at800 = wwvbLogicSignal(7, 30, i, 800, 66, 2008, 0, 0);
+        WWVB_T bit = wwvbCalculateBit(7, 30, i, 66, 2008, 0, 0);
 
         char detected = '?';
-        if (at200) {
-            detected = '0'; // ZERO is high after 200ms
-        } else if (at500) {
-            detected = '1'; // ONE is high after 500ms
-        } else if (at800) {
-            detected = 'M'; // MARK is high after 800ms
-        } else {
-            // Should not happen if logic is correct (MARK is high at 800)
-            // If it's low at 800, it's invalid or very long low pulse?
-            // wwvbLogicSignal returns true if millis >= threshold.
-            // If bit is MARK, threshold is 800. So at 800 it returns true.
-            detected = 'X';
+        if (bit == WWVB_T::ZERO) {
+            detected = '0';
+        } else if (bit == WWVB_T::ONE) {
+            detected = '1';
+        } else if (bit == WWVB_T::MARK) {
+            detected = 'M';
         }
 
         char msg[32];
