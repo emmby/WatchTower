@@ -48,7 +48,10 @@ std::vector<TestCase> test_cases = {
     {"Leap Year (Feb 29)", 2024, 2, 29, 12, 0},
     {"Year Boundary (Dec 31)", 2025, 12, 31, 23, 59},
     {"EU DST Spring (Mar 30)", 2025, 3, 30, 1, 59}, // EU 2025: Mar 30
-    {"EU DST Fall (Oct 26)", 2025, 10, 26, 2, 59}    // EU 2025: Oct 26
+    {"EU DST Fall (Oct 26)", 2025, 10, 26, 2, 59},   // EU 2025: Oct 26
+    {"Century Leap Year (2000)", 2000, 2, 29, 12, 0},
+    {"Non-Leap Century (2100)", 2100, 2, 28, 12, 0},
+    {"Stress Test (Max Bits)", 2099, 12, 31, 23, 59}
 };
 
 // Helper to run comparison for a specific signal and timezone
@@ -161,7 +164,8 @@ void test_wwvb_compare(void) {
 
 void test_dcf77_compare(void) {
     // DCF77: CET/CEST, Local time input
-    run_comparison<DCF77Signal, DCF77TimeSignalSource>("CET-1CEST,M3.5.0,M10.5.0/3", false, true);
+    // We pass false for add_minute because DCF77Signal now handles the +60s internally
+    run_comparison<DCF77Signal, DCF77TimeSignalSource>("CET-1CEST,M3.5.0,M10.5.0/3", false, false);
 }
 
 void test_jjy_compare(void) {
@@ -179,7 +183,8 @@ void test_msf_compare(void) {
     // Skip DUT1 bits (1-16) as txtempus sets them to 0
     std::vector<int> skip;
     for(int i=1; i<=16; ++i) skip.push_back(i);
-    run_comparison<MSFSignal, MSFTimeSignalSource>("GMT0BST,M3.5.0/1,M10.5.0", false, true, skip);
+    // We pass false for add_minute because MSFSignal now handles the +60s internally
+    run_comparison<MSFSignal, MSFTimeSignalSource>("GMT0BST,M3.5.0/1,M10.5.0", false, false, skip);
 }
 
 int main(int argc, char **argv) {
