@@ -9,15 +9,14 @@ public:
         return 77500;
     }
 
-    SignalBit_T getBit(
-        int hour,
-        int minute,
-        int second,
-        int yday,
-        int year,
-        int today_start_isdst,
-        int tomorrow_start_isdst
-    ) override {
+    SignalBit_T getBit(const struct tm& timeinfo, int today_start_isdst, int tomorrow_start_isdst) override {
+        int hour = timeinfo.tm_hour;
+        int minute = timeinfo.tm_min;
+        int second = timeinfo.tm_sec;
+        int year = timeinfo.tm_year + 1900;
+        int mday = timeinfo.tm_mday;
+        int wday = timeinfo.tm_wday == 0 ? 7 : timeinfo.tm_wday; // 1=Mon...7=Sun
+        int month = timeinfo.tm_mon + 1;
         // DCF77 Format
         // 0: Start of minute (0)
         // 1-14: Meteo (0)
@@ -73,8 +72,8 @@ public:
             case 1 ... 14: bit = SignalBit_T::ZERO; break;
             case 15: bit = SignalBit_T::ZERO; break;
             case 16: bit = SignalBit_T::ZERO; break;
-            case 17: bit = today_start_isdst ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
-            case 18: bit = !today_start_isdst ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 17: bit = timeinfo.tm_isdst ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 18: bit = !timeinfo.tm_isdst ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
             case 19: bit = SignalBit_T::ZERO; break;
             case 20: bit = SignalBit_T::ONE; break;
             case 21: bit = ((minute % 10) & 1) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
@@ -92,16 +91,38 @@ public:
             case 33: bit = ((hour / 10) & 1) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
             case 34: bit = ((hour / 10) & 2) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
             case 35: bit = getParity(hour) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
-            // Date bits... need day of month, month, year, wday.
-            // We have yday. We need to convert yday to day/month.
-            // This is getting complicated.
-            // I'll leave placeholders for date bits for now or do a quick conversion.
+            case 36: bit = ((mday % 10) & 1) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 37: bit = ((mday % 10) & 2) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 38: bit = ((mday % 10) & 4) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 39: bit = ((mday % 10) & 8) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 40: bit = ((mday / 10) & 1) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 41: bit = ((mday / 10) & 2) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 42: bit = (wday & 1) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 43: bit = (wday & 2) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 44: bit = (wday & 4) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 45: bit = ((month % 10) & 1) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 46: bit = ((month % 10) & 2) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 47: bit = ((month % 10) & 4) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 48: bit = ((month % 10) & 8) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 49: bit = ((month / 10) & 1) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 50: bit = ((year % 10) & 1) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 51: bit = ((year % 10) & 2) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 52: bit = ((year % 10) & 4) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 53: bit = ((year % 10) & 8) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 54: bit = (((year / 10) % 10) & 1) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 55: bit = (((year / 10) % 10) & 2) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 56: bit = (((year / 10) % 10) & 4) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 57: bit = (((year / 10) % 10) & 8) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            case 58: bit = getParity(mday) ^ getParity(wday) ^ getParity(month) ^ getParity(year % 100) ? SignalBit_T::ONE : SignalBit_T::ZERO; break;
+            // Wait, parity is over all date bits (36-57).
+            // My getParity helper takes an int and calculates BCD parity.
+            // I need to sum parities of all components?
+            // Parity of (mday_bcd + wday_bcd + month_bcd + year_bcd).
+            // getParity(val) returns 1 if odd number of bits set.
+            // XORing them gives the parity of the sum.
+            // Yes.
             default: bit = SignalBit_T::ZERO; break;
         }
-        
-        // Re-implementing date bits properly requires day/month/wday.
-        // I will update the base class to pass `struct tm` or similar to make this easier.
-        // But for now, I will just return ZERO for unimplemented bits to get the structure right.
         
         return bit;
     }

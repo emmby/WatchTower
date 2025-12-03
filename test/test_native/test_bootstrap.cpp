@@ -145,11 +145,22 @@ void test_serial_date_output(void) {
     TEST_ASSERT_NOT_NULL(strstr(MySerial.output.c_str(), "December 25 2025"));
 }
 
+// Helper to adapt legacy calls to new interface
+SignalBit_T getBitLegacy(RadioTimeSignal& sig, int h, int m, int s, int yd, int y, int d1, int d2) {
+    struct tm t = {0};
+    t.tm_hour = h;
+    t.tm_min = m;
+    t.tm_sec = s;
+    t.tm_yday = yd - 1;
+    t.tm_year = y - 1900;
+    return sig.getBit(t, d1, d2);
+}
+
 void test_wwvb_logic_signal(void) {
     // Test ZERO bit (e.g. second 4 is always ZERO/Blank)
     // Expect: False for < 200ms, True for >= 200ms
     WWVBSignal wwvbSignal;
-    SignalBit_T bit = wwvbSignal.getBit(0, 0, 4, 0, 2025, 0, 0);
+    SignalBit_T bit = getBitLegacy(wwvbSignal, 0, 0, 4, 0, 2025, 0, 0);
     TEST_ASSERT_EQUAL(SignalBit_T::ZERO, bit);
     TEST_ASSERT_FALSE(wwvbSignal.getSignalLevel(bit, 199));
     TEST_ASSERT_TRUE(wwvbSignal.getSignalLevel(bit, 200));
@@ -158,14 +169,14 @@ void test_wwvb_logic_signal(void) {
     // Minute 40 = 101000 binary? No. 40 / 10 = 4. 4 in binary is 100.
     // Second 1 checks bit 2 of (minute/10). (4 >> 2) & 1 = 1. So it's a ONE.
     // Expect: False for < 500ms, True for >= 500ms
-    bit = wwvbSignal.getBit(0, 40, 1, 0, 2025, 0, 0);
+    bit = getBitLegacy(wwvbSignal, 0, 40, 1, 0, 2025, 0, 0);
     TEST_ASSERT_EQUAL(SignalBit_T::ONE, bit);
     TEST_ASSERT_FALSE(wwvbSignal.getSignalLevel(bit, 499));
     TEST_ASSERT_TRUE(wwvbSignal.getSignalLevel(bit, 500));
 
     // Test MARK bit (e.g. second 0 is always MARK)
     // Expect: False for < 800ms, True for >= 800ms
-    bit = wwvbSignal.getBit(0, 0, 0, 0, 2025, 0, 0);
+    bit = getBitLegacy(wwvbSignal, 0, 0, 0, 0, 2025, 0, 0);
     TEST_ASSERT_EQUAL(SignalBit_T::MARK, bit);
     TEST_ASSERT_FALSE(wwvbSignal.getSignalLevel(bit, 799));
     TEST_ASSERT_TRUE(wwvbSignal.getSignalLevel(bit, 800));
@@ -205,7 +216,7 @@ void test_wwvb_frame_encoding(void) {
     for (int i = 0; i < 60; ++i) {
         if (expected[i] == '?') continue;
 
-        SignalBit_T bit = wwvbSignal.getBit(7, 30, i, 66, 2008, 0, 0);
+        SignalBit_T bit = getBitLegacy(wwvbSignal, 7, 30, i, 66, 2008, 0, 0);
 
         char detected = '?';
         if (bit == SignalBit_T::ZERO) {
@@ -226,20 +237,20 @@ void test_dcf77_signal(void) {
     DCF77Signal dcf77;
     
     // Test IDLE bit (second 59)
-    SignalBit_T bit = dcf77.getBit(0, 0, 59, 0, 2025, 0, 0);
+    SignalBit_T bit = getBitLegacy(dcf77, 0, 0, 59, 0, 2025, 0, 0);
     TEST_ASSERT_EQUAL(SignalBit_T::IDLE, bit);
     TEST_ASSERT_TRUE(dcf77.getSignalLevel(bit, 0));
     TEST_ASSERT_TRUE(dcf77.getSignalLevel(bit, 999));
 
     // Test Start of Minute (second 0) -> ZERO
-    bit = dcf77.getBit(0, 0, 0, 0, 2025, 0, 0);
+    bit = getBitLegacy(dcf77, 0, 0, 0, 0, 2025, 0, 0);
     TEST_ASSERT_EQUAL(SignalBit_T::ZERO, bit);
     // ZERO: 100ms Low, 900ms High
     TEST_ASSERT_FALSE(dcf77.getSignalLevel(bit, 99));
     TEST_ASSERT_TRUE(dcf77.getSignalLevel(bit, 100));
 
     // Test Start of Time (second 20) -> ONE
-    bit = dcf77.getBit(0, 0, 20, 0, 2025, 0, 0);
+    bit = getBitLegacy(dcf77, 0, 0, 20, 0, 2025, 0, 0);
     TEST_ASSERT_EQUAL(SignalBit_T::ONE, bit);
     // ONE: 200ms Low, 800ms High
     TEST_ASSERT_FALSE(dcf77.getSignalLevel(bit, 199));
@@ -253,7 +264,7 @@ void test_jjy_signal(void) {
     // Test Markers (0, 9, 19, 29, 39, 49, 59)
     int markers[] = {0, 9, 19, 29, 39, 49, 59};
     for (int sec : markers) {
-        SignalBit_T bit = jjy.getBit(0, 0, sec, 0, 2025, 0, 0);
+        SignalBit_T bit = getBitLegacy(jjy, 0, 0, sec, 0, 2025, 0, 0);
         TEST_ASSERT_EQUAL(SignalBit_T::MARK, bit);
         // MARK: High 200ms, Low 800ms
         TEST_ASSERT_TRUE(jjy.getSignalLevel(bit, 199));
@@ -266,14 +277,14 @@ void test_jjy_signal(void) {
     // Sec 1: weight 40
     // Sec 2: weight 20
     // Sec 3: weight 10
-    SignalBit_T bit = jjy.getBit(0, 40, 1, 0, 2025, 0, 0);
+    SignalBit_T bit = getBitLegacy(jjy, 0, 40, 1, 0, 2025, 0, 0);
     TEST_ASSERT_EQUAL(SignalBit_T::ONE, bit);
     // ONE: High 500ms, Low 500ms
     TEST_ASSERT_TRUE(jjy.getSignalLevel(bit, 499));
     TEST_ASSERT_FALSE(jjy.getSignalLevel(bit, 500));
 
     // Test Minute 0 -> Bit 1 is ZERO
-    bit = jjy.getBit(0, 0, 1, 0, 2025, 0, 0);
+    bit = getBitLegacy(jjy, 0, 0, 1, 0, 2025, 0, 0);
     TEST_ASSERT_EQUAL(SignalBit_T::ZERO, bit);
     // ZERO: High 800ms, Low 200ms
     TEST_ASSERT_TRUE(jjy.getSignalLevel(bit, 799));
@@ -285,14 +296,14 @@ void test_msf_signal(void) {
     TEST_ASSERT_EQUAL(60000, msf.getFrequency());
 
     // Test Start of Minute (second 0) -> MARK
-    SignalBit_T bit = msf.getBit(0, 0, 0, 0, 2025, 0, 0);
+    SignalBit_T bit = getBitLegacy(msf, 0, 0, 0, 0, 2025, 0, 0);
     TEST_ASSERT_EQUAL(SignalBit_T::MARK, bit);
     // MARK: 500ms Low (False), 500ms High (True)
     TEST_ASSERT_FALSE(msf.getSignalLevel(bit, 499));
     TEST_ASSERT_TRUE(msf.getSignalLevel(bit, 500));
 
     // Test Default (second 1) -> ZERO (Placeholder implementation)
-    bit = msf.getBit(0, 0, 1, 0, 2025, 0, 0);
+    bit = getBitLegacy(msf, 0, 0, 1, 0, 2025, 0, 0);
     TEST_ASSERT_EQUAL(SignalBit_T::ZERO, bit);
     // ZERO: 100ms Low, 900ms High
     TEST_ASSERT_FALSE(msf.getSignalLevel(bit, 99));

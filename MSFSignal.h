@@ -9,15 +9,12 @@ public:
         return 60000;
     }
 
-    SignalBit_T getBit(
-        int hour,
-        int minute,
-        int second,
-        int yday,
-        int year,
-        int today_start_isdst,
-        int tomorrow_start_isdst
-    ) override {
+    SignalBit_T getBit(const struct tm& timeinfo, int today_start_isdst, int tomorrow_start_isdst) override {
+        int hour = timeinfo.tm_hour;
+        int minute = timeinfo.tm_min;
+        int second = timeinfo.tm_sec;
+        int yday = timeinfo.tm_yday + 1;
+        int year = timeinfo.tm_year + 1900;
         // MSF Format (Simplified)
         // 0: Minute Marker (MARK)
         // 1-16: DUT1 (0)

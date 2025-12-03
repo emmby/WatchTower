@@ -9,15 +9,12 @@ public:
         return 60000;
     }
 
-    SignalBit_T getBit(
-        int hour,
-        int minute,
-        int second,
-        int yday,
-        int year,
-        int today_start_isdst,
-        int tomorrow_start_isdst
-    ) override {
+    SignalBit_T getBit(const struct tm& timeinfo, int today_start_isdst, int tomorrow_start_isdst) override {
+        int hour = timeinfo.tm_hour;
+        int minute = timeinfo.tm_min;
+        int second = timeinfo.tm_sec;
+        int yday = timeinfo.tm_yday + 1;
+        int year = timeinfo.tm_year + 1900;
         // https://www.nist.gov/pml/time-and-frequency-division/time-distribution/radio-station-wwvb/wwvb-time-code-format
         
         // Helper for leap year check
@@ -134,32 +131,32 @@ public:
                 bit = SignalBit_T::ZERO;
                 break;
             case 36: // UTI sign +
-                bit = SignalBit_T::ONE;
-                break;
-            case 37: // UTI sign -
-                bit = SignalBit_T::ZERO;
-                break;
-            case 38: // UTI sign +
-                bit = SignalBit_T::ONE;
-                break;
-            case 39: // mark
-                bit = SignalBit_T::MARK;
-                break;
-            case 40: // UTI correction 0.8
-                bit = SignalBit_T::ZERO;
-                break;
-            case 41: // UTI correction 0.4
-                bit = SignalBit_T::ZERO;
-                break;
-            case 42: // UTI correction 0.2
-                bit = SignalBit_T::ZERO;
-                break;
-            case 43: // UTI correction 0.1
-                bit = SignalBit_T::ZERO;
-                break;
-            case 44: // blank
-                bit = SignalBit_T::ZERO;
-                break;
+            bit = SignalBit_T::ZERO;
+            break;
+        case 37: // UTI sign -
+            bit = SignalBit_T::ZERO;
+            break;
+        case 38: // UTI sign +
+            bit = SignalBit_T::ZERO;
+            break;
+        case 39: // mark
+            bit = SignalBit_T::MARK;
+            break;
+        case 40: // UTI correction 0.8
+            bit = SignalBit_T::ZERO;
+            break;
+        case 41: // UTI correction 0.4
+            bit = SignalBit_T::ZERO;
+            break;
+        case 42: // UTI correction 0.2
+            bit = SignalBit_T::ZERO;
+            break;
+        case 43: // UTI correction 0.1
+            bit = SignalBit_T::ZERO;
+            break;
+        case 44: // blank
+            bit = SignalBit_T::ZERO;
+            break;
             case 45: // year 80
                 bit = (SignalBit_T)((((year / 10) % 10) >> 3) & 1);
                 break;
@@ -197,10 +194,16 @@ public:
                 bit = SignalBit_T::ZERO;
                 break;
             case 57: // dst bit 1
-                bit = today_start_isdst ? SignalBit_T::ONE : SignalBit_T::ZERO;
+                if (today_start_isdst && tomorrow_start_isdst) bit = SignalBit_T::ONE; // DST in effect (11)
+                else if (!today_start_isdst && !tomorrow_start_isdst) bit = SignalBit_T::ZERO; // DST not in effect (00)
+                else if (!today_start_isdst && tomorrow_start_isdst) bit = SignalBit_T::ONE; // DST starts today (10)
+                else bit = SignalBit_T::ZERO; // DST ends today (01)
                 break;
             case 58: // dst bit 2
-                bit = tomorrow_start_isdst ? SignalBit_T::ONE : SignalBit_T::ZERO;
+                if (today_start_isdst && tomorrow_start_isdst) bit = SignalBit_T::ONE; // DST in effect (11)
+                else if (!today_start_isdst && !tomorrow_start_isdst) bit = SignalBit_T::ZERO; // DST not in effect (00)
+                else if (!today_start_isdst && tomorrow_start_isdst) bit = SignalBit_T::ZERO; // DST starts today (10)
+                else bit = SignalBit_T::ONE; // DST ends today (01)
                 break;
             case 59: // mark
                 bit = SignalBit_T::MARK;
