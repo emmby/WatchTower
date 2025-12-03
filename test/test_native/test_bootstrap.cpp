@@ -148,6 +148,7 @@ void test_serial_date_output(void) {
 void test_wwvb_logic_signal(void) {
     // Test ZERO bit (e.g. second 4 is always ZERO/Blank)
     // Expect: False for < 200ms, True for >= 200ms
+    WWVBSignal wwvbSignal;
     SignalBit_T bit = wwvbSignal.getBit(0, 0, 4, 0, 2025, 0, 0);
     TEST_ASSERT_EQUAL(SignalBit_T::ZERO, bit);
     TEST_ASSERT_FALSE(wwvbSignal.getSignalLevel(bit, 199));
@@ -171,6 +172,8 @@ void test_wwvb_logic_signal(void) {
 }
 
 void test_wwvb_frame_encoding(void) {
+    WWVBSignal wwvbSignal;
+    
     // Expected bits for Mar 6 2008 07:30:00 UTC from https://en.wikipedia.org/wiki/WWVB#Amplitude-modulated_time_code
     // Excludes DUT bits (36-38, 40-43) which are marked as '?'
     const char* expected = 

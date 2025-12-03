@@ -50,21 +50,16 @@ const int PIN_ANTENNA = 13;
 // https://gist.github.com/alwynallan/24d96091655391107939
 const char *timezone = "PST8PDT,M3.2.0,M11.1.0"; // America/Los_Angeles
 
+
 // Default to WWVB if no signal is specified
-#if !defined(SIGNAL_WWVB) && !defined(SIGNAL_DCF77) && !defined(SIGNAL_MSF) && !defined(SIGNAL_JJY)
-#define SIGNAL_WWVB
-#endif
-
-RadioTimeSignal* signalGenerator = nullptr;
-
-#if defined(SIGNAL_WWVB)
-WWVBSignal wwvbSignal;
-#elif defined(SIGNAL_DCF77)
-DCF77Signal dcf77Signal;
+#if defined(SIGNAL_DCF77)
+RadioTimeSignal* signalGenerator = new DCF77Signal();
 #elif defined(SIGNAL_MSF)
-MSFSignal msfSignal;
+RadioTimeSignal* signalGenerator = new MSFSignal();
 #elif defined(SIGNAL_JJY)
-JJYSignal jjySignal;
+RadioTimeSignal* signalGenerator = new JJYSignal();
+#else
+RadioTimeSignal* signalGenerator = new WWVBSignal();
 #endif
 
 const char* const ntpServer = "pool.ntp.org";
@@ -151,17 +146,6 @@ void setup() {
   wifiManager.autoConnect("WatchTower");
 
   clearBroadcastValues();
-
-  // Initialize the signal generator
-  #if defined(SIGNAL_WWVB)
-  signalGenerator = &wwvbSignal;
-  #elif defined(SIGNAL_DCF77)
-  signalGenerator = &dcf77Signal;
-  #elif defined(SIGNAL_MSF)
-  signalGenerator = &msfSignal;
-  #elif defined(SIGNAL_JJY)
-  signalGenerator = &jjySignal;
-  #endif
 
   // --- ESPUI SETUP ---
   ESPUI.setVerbosity(Verbosity::Quiet);
