@@ -144,11 +144,31 @@ void test_serial_date_output(void) {
     TEST_ASSERT_NOT_NULL(strstr(MySerial.output.c_str(), "December 25 2025"));
 }
 
+void test_wwvb_logic_signal(void) {
+    // Test ZERO bit (e.g. second 4 is always ZERO/Blank)
+    // Expect: False for < 200ms, True for >= 200ms
+    TEST_ASSERT_FALSE(wwvbLogicSignal(0, 0, 4, 199, 0, 2025, 0, 0));
+    TEST_ASSERT_TRUE(wwvbLogicSignal(0, 0, 4, 200, 0, 2025, 0, 0));
+
+    // Test ONE bit (e.g. second 1, minute 40 -> bit 2 is 1)
+    // Minute 40 = 101000 binary? No. 40 / 10 = 4. 4 in binary is 100.
+    // Second 1 checks bit 2 of (minute/10). (4 >> 2) & 1 = 1. So it's a ONE.
+    // Expect: False for < 500ms, True for >= 500ms
+    TEST_ASSERT_FALSE(wwvbLogicSignal(0, 40, 1, 499, 0, 2025, 0, 0));
+    TEST_ASSERT_TRUE(wwvbLogicSignal(0, 40, 1, 500, 0, 2025, 0, 0));
+
+    // Test MARK bit (e.g. second 0 is always MARK)
+    // Expect: False for < 800ms, True for >= 800ms
+    TEST_ASSERT_FALSE(wwvbLogicSignal(0, 0, 0, 799, 0, 2025, 0, 0));
+    TEST_ASSERT_TRUE(wwvbLogicSignal(0, 0, 0, 800, 0, 2025, 0, 0));
+}
+
 int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_setup_completes);
     RUN_TEST(test_wifi_connection_attempt);
     RUN_TEST(test_serial_date_output);
+    RUN_TEST(test_wwvb_logic_signal);
     UNITY_END();
     return 0;
 }
