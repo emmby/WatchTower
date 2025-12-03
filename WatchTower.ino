@@ -49,8 +49,8 @@ enum WWVB_T {
   MARK = 2,
 };
 
-WWVB_T wwvbCalculateBit(int, int, int, int, int, int, int);
-bool wwvbSignal(WWVB_T, int);
+WWVB_T getWwvbBit(int, int, int, int, int, int, int);
+bool getWwvbSignalLevel(WWVB_T, int);
 
 const int KHZ_60 = 60000;
 const char* const ntpServer = "pool.ntp.org";
@@ -219,7 +219,7 @@ void loop() {
 
   const bool prevLogicValue = logicValue;
 
-    WWVB_T bit = wwvbCalculateBit(
+    WWVB_T bit = getWwvbBit(
     buf_now_utc.tm_hour,
     buf_now_utc.tm_min,
     buf_now_utc.tm_sec, 
@@ -234,7 +234,7 @@ void loop() {
     }
     broadcast[buf_now_utc.tm_sec] = bit;
 
-    logicValue = wwvbSignal(bit, now.tv_usec/1000);
+    logicValue = getWwvbSignalLevel(bit, now.tv_usec/1000);
 
   // --- UI UPDATE LOGIC ---
   if( logicValue != prevLogicValue ) {
@@ -332,7 +332,7 @@ void loop() {
 
 // Returns the WWVB bit type for the given time
 // https://www.nist.gov/pml/time-and-frequency-division/time-distribution/radio-station-wwvb/wwvb-time-code-format
-WWVB_T wwvbCalculateBit(
+WWVB_T getWwvbBit(
     int hour,                // 0 - 23
     int minute,              // 0 - 59
     int second,              // 0 - 59 (leap 60)
@@ -532,7 +532,7 @@ WWVB_T wwvbCalculateBit(
 // Returns a logical high or low to indicate whether the
 // PWM signal should be high or low based on the current time
 // https://www.nist.gov/pml/time-and-frequency-division/time-distribution/radio-station-wwvb/wwvb-time-code-format
-bool wwvbSignal(WWVB_T bit, int millis) {
+bool getWwvbSignalLevel(WWVB_T bit, int millis) {
     // Convert a wwvb zero, one, or mark to the appropriate pulse width
     // zero: low 200ms, high 800ms
     // one: low 500ms, high 500ms

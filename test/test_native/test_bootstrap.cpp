@@ -148,26 +148,26 @@ void test_serial_date_output(void) {
 void test_wwvb_logic_signal(void) {
     // Test ZERO bit (e.g. second 4 is always ZERO/Blank)
     // Expect: False for < 200ms, True for >= 200ms
-    WWVB_T bit = wwvbCalculateBit(0, 0, 4, 0, 2025, 0, 0);
+    WWVB_T bit = getWwvbBit(0, 0, 4, 0, 2025, 0, 0);
     TEST_ASSERT_EQUAL(WWVB_T::ZERO, bit);
-    TEST_ASSERT_FALSE(wwvbSignal(bit, 199));
-    TEST_ASSERT_TRUE(wwvbSignal(bit, 200));
+    TEST_ASSERT_FALSE(getWwvbSignalLevel(bit, 199));
+    TEST_ASSERT_TRUE(getWwvbSignalLevel(bit, 200));
 
     // Test ONE bit (e.g. second 1, minute 40 -> bit 2 is 1)
     // Minute 40 = 101000 binary? No. 40 / 10 = 4. 4 in binary is 100.
     // Second 1 checks bit 2 of (minute/10). (4 >> 2) & 1 = 1. So it's a ONE.
     // Expect: False for < 500ms, True for >= 500ms
-    bit = wwvbCalculateBit(0, 40, 1, 0, 2025, 0, 0);
+    bit = getWwvbBit(0, 40, 1, 0, 2025, 0, 0);
     TEST_ASSERT_EQUAL(WWVB_T::ONE, bit);
-    TEST_ASSERT_FALSE(wwvbSignal(bit, 499));
-    TEST_ASSERT_TRUE(wwvbSignal(bit, 500));
+    TEST_ASSERT_FALSE(getWwvbSignalLevel(bit, 499));
+    TEST_ASSERT_TRUE(getWwvbSignalLevel(bit, 500));
 
     // Test MARK bit (e.g. second 0 is always MARK)
     // Expect: False for < 800ms, True for >= 800ms
-    bit = wwvbCalculateBit(0, 0, 0, 0, 2025, 0, 0);
+    bit = getWwvbBit(0, 0, 0, 0, 2025, 0, 0);
     TEST_ASSERT_EQUAL(WWVB_T::MARK, bit);
-    TEST_ASSERT_FALSE(wwvbSignal(bit, 799));
-    TEST_ASSERT_TRUE(wwvbSignal(bit, 800));
+    TEST_ASSERT_FALSE(getWwvbSignalLevel(bit, 799));
+    TEST_ASSERT_TRUE(getWwvbSignalLevel(bit, 800));
 }
 
 void test_wwvb_frame_encoding(void) {
@@ -202,7 +202,7 @@ void test_wwvb_frame_encoding(void) {
     for (int i = 0; i < 60; ++i) {
         if (expected[i] == '?') continue;
 
-        WWVB_T bit = wwvbCalculateBit(7, 30, i, 66, 2008, 0, 0);
+        WWVB_T bit = getWwvbBit(7, 30, i, 66, 2008, 0, 0);
 
         char detected = '?';
         if (bit == WWVB_T::ZERO) {
