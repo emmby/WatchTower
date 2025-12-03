@@ -163,12 +163,74 @@ void test_wwvb_logic_signal(void) {
     TEST_ASSERT_TRUE(wwvbLogicSignal(0, 0, 0, 800, 0, 2025, 0, 0));
 }
 
+void test_wwvb_frame_encoding(void) {
+    // Expected bits for Mar 6 2008 07:30:00 UTC from https://en.wikipedia.org/wiki/WWVB#Amplitude-modulated_time_code
+    // Excludes DUT bits (36-38, 40-43) which are marked as '?'
+    const char* expected = 
+        "M"         // 00
+        "01100000"  // 01-08 (Min 30)
+        "M"         // 09
+        "00"        // 10-11
+        "0000111"   // 12-18 (Hour 7)
+        "M"         // 19
+        "00"        // 20-21
+        "0000110"   // 22-28 (Day 66 part 1)
+        "M"         // 29
+        "0110"      // 30-33 (Day 66 part 2)
+        "00"        // 34-35
+        "???"       // 36-38 (DUT)
+        "M"         // 39
+        "????"      // 40-43 (DUT)
+        "0"         // 44
+        "0000"      // 45-48 (Year 08 part 1)
+        "M"         // 49
+        "1000"      // 50-53 (Year 08 part 2)
+        "0"         // 54
+        "1"         // 55 (Leap Year)
+        "0"         // 56 (Leap Sec)
+        "00"        // 57-58 (DST)
+        "M";        // 59
+
+    for (int i = 0; i < 60; ++i) {
+        if (expected[i] == '?') continue;
+
+        // Determine bit type from wwvbLogicSignal
+        // ZERO: High at 200ms (Low < 200)
+        // ONE: High at 500ms (Low < 500)
+        // MARK: High at 800ms (Low < 800)
+        
+        bool at200 = wwvbLogicSignal(7, 30, i, 200, 66, 2008, 0, 0);
+        bool at500 = wwvbLogicSignal(7, 30, i, 500, 66, 2008, 0, 0);
+        bool at800 = wwvbLogicSignal(7, 30, i, 800, 66, 2008, 0, 0);
+
+        char detected = '?';
+        if (at200) {
+            detected = '0'; // ZERO is high after 200ms
+        } else if (at500) {
+            detected = '1'; // ONE is high after 500ms
+        } else if (at800) {
+            detected = 'M'; // MARK is high after 800ms
+        } else {
+            // Should not happen if logic is correct (MARK is high at 800)
+            // If it's low at 800, it's invalid or very long low pulse?
+            // wwvbLogicSignal returns true if millis >= threshold.
+            // If bit is MARK, threshold is 800. So at 800 it returns true.
+            detected = 'X';
+        }
+
+        char msg[32];
+        snprintf(msg, sizeof(msg), "Bit %d mismatch", i);
+        TEST_ASSERT_EQUAL_MESSAGE(expected[i], detected, msg);
+    }
+}
+
 int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_setup_completes);
     RUN_TEST(test_wifi_connection_attempt);
     RUN_TEST(test_serial_date_output);
     RUN_TEST(test_wwvb_logic_signal);
+    RUN_TEST(test_wwvb_frame_encoding);
     UNITY_END();
     return 0;
 }
