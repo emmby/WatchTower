@@ -1,5 +1,8 @@
 #include <Arduino.h>
 #include <unity.h>
+#include <string>
+#include <vector>
+#include <sys/time.h>
 
 // Mocks
 #include "WiFiManager.h"
@@ -24,17 +27,33 @@ unsigned long millis() { return 0; }
 void pinMode(uint8_t pin, uint8_t mode) {}
 void digitalWrite(uint8_t pin, uint8_t val) {}
 
+// Mock gettimeofday
+struct timeval mock_tv = {0, 0};
+int mock_gettimeofday(struct timeval *tv, void *tz) {
+    if (tv) *tv = mock_tv;
+    return 0;
+}
+#define gettimeofday mock_gettimeofday
+
 // Mock Serial to support printf
 class SerialMock {
 public:
+    std::string output;
     void begin(unsigned long) {}
-    void println(const char*) {}
-    void println(String) {}
-    void println(int) {}
-    void println() {}
-    void print(const char*) {}
-    void print(int) {}
-    void printf(const char * format, ...) {}
+    void println(const char* s) { output += s; output += "\n"; }
+    void println(String s) {}
+    void println(int i) { output += std::to_string(i); output += "\n"; }
+    void println() { output += "\n"; }
+    void print(const char* s) { output += s; }
+    void print(int i) { output += std::to_string(i); }
+    void printf(const char * format, ...) {
+        char buffer[256];
+        va_list args;
+        va_start(args, format);
+        vsnprintf(buffer, sizeof(buffer), format, args);
+        va_end(args);
+        output += buffer;
+    }
 };
 SerialMock MySerial;
 #define Serial MySerial
@@ -62,6 +81,12 @@ bool wwvbLogicSignal(int, int, int, int, int, int, int, int);
 #include "../../WatchTower.ino"
 
 void setUp(void) {
+    MySerial.output = "";
+    WiFiManager::calledAutoConnect = false;
+    memset(WiFiManager::lastSSID, 0, sizeof(WiFiManager::lastSSID));
+    // Set TZ to UTC for predictable testing
+    setenv("TZ", "UTC", 1);
+    tzset();
 }
 
 void tearDown(void) {
@@ -83,9 +108,6 @@ void test_setup_completes(void) {
 
 void test_wifi_connection_attempt(void) {
     // Arrange
-    WiFiManager::calledAutoConnect = false;
-    memset(WiFiManager::lastSSID, 0, sizeof(WiFiManager::lastSSID));
-
     // Act
     setup();
 
@@ -94,10 +116,39 @@ void test_wifi_connection_attempt(void) {
     TEST_ASSERT_EQUAL_STRING("WatchTower", WiFiManager::lastSSID);
 }
 
+void test_serial_date_output(void) {
+    // Arrange
+    // Set time to 2025-12-25 12:00:00 UTC
+    // 1766664000
+    mock_tv.tv_sec = 1766664000; 
+    mock_tv.tv_usec = 900000; // 900ms to ensure logicValue=1 (MARK/ONE/ZERO all high at 900ms? No wait)
+    // ZERO: low 200ms, high 800ms. So at 900ms (0.9s), it is HIGH (Wait, "low 200ms, high 800ms" usually means low FOR 200ms, then high FOR 800ms? Or low UNTIL 200ms?)
+    // WatchTower.ino:
+    // if (bit == WWVB_T::ZERO) return millis >= 200;
+    // So if millis (0-999) >= 200, it returns true (High).
+    // So 900 >= 200 is True.
+    // So logicValue will be 1.
+    // prevLogicValue init is 0.
+    // So it should print.
+    
+    // Act
+    setup(); // Initialize
+    loop();  // Run loop once
+
+    // Assert
+    // Expected output format: "Thursday, December 25 2025 12:00:00.900 +0000 UTC [last sync Pending...]: 1"
+    // Note: The exact string depends on strftime implementation and locale, but usually standard C is consistent.
+    // Also "Pending..." because lastSync is not set in this test path (unless setup sets it? No, callback does).
+    
+    // We'll check for the date part to be safe
+    TEST_ASSERT_NOT_NULL(strstr(MySerial.output.c_str(), "December 25 2025"));
+}
+
 int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_setup_completes);
     RUN_TEST(test_wifi_connection_attempt);
+    RUN_TEST(test_serial_date_output);
     UNITY_END();
     return 0;
 }
