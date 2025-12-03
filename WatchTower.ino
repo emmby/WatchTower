@@ -93,6 +93,22 @@ void accesspointCallback(WiFiManager*) {
   Serial.println("Connect to SSID: WatchTower with another device to set wifi configuration.");
 }
 
+// Convert a logical bit into a PWM pulse width.
+// Returns 50% duty cycle (128) for high, 0% for low
+static inline short dutyCycle(bool logicValue) {
+  return logicValue ? (256*0.5) : 0; // 128 == 50% duty cycle
+}
+
+static inline int is_leap_year(int year) {
+    return (year % 4 == 0) && (year % 100 != 0 || year % 400 == 0);
+}
+
+void clearBroadcastValues() {
+    for(int i=0; i<sizeof(broadcast)/sizeof(broadcast[0]); ++i) {
+        broadcast[i] = (WWVB_T)-1; // -1 isn't legal but that's okay, we just need an invalid value
+    }
+}
+
 void setup() {
   Serial.begin(115200);
   delay(1000);
@@ -302,12 +318,6 @@ void loop() {
         pixel->show();
     }
   }  
-}
-
-// Convert a logical bit into a PWM pulse width.
-// Returns 50% duty cycle (128) for high, 0% for low
-static inline short dutyCycle(bool logicValue) {
-  return logicValue ? (256*0.5) : 0; // 128 == 50% duty cycle
 }
 
 
@@ -525,15 +535,5 @@ bool wwvbLogicSignal(
       return millis >= 500;
     } else {
       return millis >= 800;
-    }
-}
-
-static inline int is_leap_year(int year) {
-    return (year % 4 == 0) && (year % 100 != 0 || year % 400 == 0);
-}
-
-void clearBroadcastValues() {
-    for(int i=0; i<sizeof(broadcast)/sizeof(broadcast[0]); ++i) {
-        broadcast[i] = (WWVB_T)-1; // -1 isn't legal but that's okay, we just need an invalid value
     }
 }
