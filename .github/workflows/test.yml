@@ -35,8 +35,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install platformio
 
-      - name: Install Library Dependencies
-        run: pio pkg install -e native
+      - name: Run Build
+        run: pio run
 
       - name: Run Native Tests
         run: pio test -e native
