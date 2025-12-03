@@ -35,6 +35,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install platformio
 
+      - name: Install Dependencies
+        run: pio pkg install
+
       - name: Run Build
         run: pio run
 
