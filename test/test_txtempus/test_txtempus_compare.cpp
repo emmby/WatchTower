@@ -53,7 +53,7 @@ std::vector<TestCase> test_cases = {
 
 // Helper to run comparison for a specific signal and timezone
 template <typename MySignalT, typename RefSignalT>
-void run_comparison(const char* timezone, bool input_is_utc, const std::vector<int>& skip_bits = {}) {
+void run_comparison(const char* timezone, bool input_is_utc, bool add_minute, const std::vector<int>& skip_bits = {}) {
     setenv("TZ", timezone, 1);
     tzset();
 
@@ -98,10 +98,6 @@ void run_comparison(const char* timezone, bool input_is_utc, const std::vector<i
         struct tm tm_tomorrow_start = tm_today_start;
         tm_tomorrow_start.tm_mday += 1;
         mktime(&tm_tomorrow_start); // Normalize
-
-        // Adjust for DCF77 "Next Minute" logic?
-        bool is_dcf77 = (std::string(typeid(MySignalT).name()).find("DCF77") != std::string::npos);
-        bool add_minute = (mySignal.getFrequency() == 77500); 
 
         time_t t_target = t_utc + (add_minute ? 60 : 0);
         struct tm tm_target;
@@ -160,12 +156,12 @@ void test_wwvb_compare(void) {
     std::vector<int> skip;
     skip.push_back(57);
     skip.push_back(58);
-    run_comparison<WWVBSignal, WWVBTimeSignalSource>("PST8PDT,M3.2.0,M11.1.0", true, skip);
+    run_comparison<WWVBSignal, WWVBTimeSignalSource>("PST8PDT,M3.2.0,M11.1.0", true, false, skip);
 }
 
 void test_dcf77_compare(void) {
     // DCF77: CET/CEST, Local time input
-    run_comparison<DCF77Signal, DCF77TimeSignalSource>("CET-1CEST,M3.5.0,M10.5.0/3", false);
+    run_comparison<DCF77Signal, DCF77TimeSignalSource>("CET-1CEST,M3.5.0,M10.5.0/3", false, true);
 }
 
 void test_jjy_compare(void) {
@@ -175,7 +171,15 @@ void test_jjy_compare(void) {
     for(int i=22; i<=34; ++i) skip.push_back(i);
     for(int i=41; i<=48; ++i) skip.push_back(i);
     for(int i=50; i<=52; ++i) skip.push_back(i);
-    run_comparison<JJYSignal, JJY60TimeSignalSource>("JST-9", false, skip);
+    run_comparison<JJYSignal, JJY60TimeSignalSource>("JST-9", false, false, skip);
+}
+
+void test_msf_compare(void) {
+    // MSF: UK Time (GMT/BST), Local time input
+    // Skip DUT1 bits (1-16) as txtempus sets them to 0
+    std::vector<int> skip;
+    for(int i=1; i<=16; ++i) skip.push_back(i);
+    run_comparison<MSFSignal, MSFTimeSignalSource>("GMT0BST,M3.5.0/1,M10.5.0", false, true, skip);
 }
 
 int main(int argc, char **argv) {
@@ -183,6 +187,7 @@ int main(int argc, char **argv) {
     RUN_TEST(test_wwvb_compare);
     RUN_TEST(test_dcf77_compare);
     RUN_TEST(test_jjy_compare);
+    RUN_TEST(test_msf_compare);
     UNITY_END();
     return 0;
 }

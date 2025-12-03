@@ -7,7 +7,9 @@ enum class SignalBit_T {
   ZERO = 0,
   ONE = 1,
   MARK = 2,
-  IDLE = 3 // Used for DCF77 59th second
+  IDLE = 3, // Used for DCF77 59th second
+  MSF_01 = 4, // MSF: A=0, B=1
+  MSF_11 = 5  // MSF: A=1, B=1
 };
 
 class RadioTimeSignal {
