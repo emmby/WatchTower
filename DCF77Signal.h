@@ -9,22 +9,19 @@ public:
         return 77500;
     }
 
-    TimeCodeSymbol getSymbol(const struct tm& timeinfo, int today_start_isdst, int tomorrow_start_isdst) override {
+    void encodeMinute(const struct tm& timeinfo, int today_start_isdst, int tomorrow_start_isdst) override {
         // DCF77 sends the UPCOMING minute.
         struct tm next_min = timeinfo;
         next_min.tm_min += 1;
         mktime(&next_min); // Normalize
         
         encodeFrame(next_min, today_start_isdst, tomorrow_start_isdst);
+    }
 
-
-
-        int second = timeinfo.tm_sec;
+    TimeCodeSymbol getSymbolForSecond(int second) override {
         if (second < 0 || second > 59) return TimeCodeSymbol::ZERO;
 
         // DCF77 59th second is IDLE (no modulation, i.e., High)
-        // But wait, my getSignalLevel(IDLE) returns true (High).
-        // So we should return IDLE here.
         if (second == 59) return TimeCodeSymbol::IDLE;
 
         bool bit = (frameBits_ >> (59 - second)) & 1;

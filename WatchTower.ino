@@ -228,11 +228,17 @@ void loop() {
 
   const bool prevLogicValue = logicValue;
 
-    TimeCodeSymbol bit = signalGenerator->getSymbol(
-        buf_now_utc,
-        buf_today_start.tm_isdst,
-        buf_tomorrow_start.tm_isdst
-    );
+    static int prevMinute = -1;
+    if (buf_now_utc.tm_min != prevMinute) {
+        prevMinute = buf_now_utc.tm_min;
+        signalGenerator->encodeMinute(
+            buf_now_utc,
+            buf_today_start.tm_isdst,
+            buf_tomorrow_start.tm_isdst
+        );
+    }
+
+    TimeCodeSymbol bit = signalGenerator->getSymbolForSecond(buf_now_utc.tm_sec);
 
     if(buf_now_utc.tm_sec == 0) {
         clearBroadcastValues();

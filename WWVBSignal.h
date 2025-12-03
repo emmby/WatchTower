@@ -9,30 +9,14 @@ public:
         return 60000;
     }
 
-    TimeCodeSymbol getSymbol(const struct tm& timeinfo, int today_start_isdst, int tomorrow_start_isdst) override {
-        // WWVB sends the current minute.
-        // However, the frame bits are calculated based on the minute.
-        // If we are in the middle of a minute, we should use the cached frame bits if possible.
-        // But since we don't have caching yet, we just recalculate.
-        // The only expensive part is the frame calculation which happens once per minute ideally.
-        // But here we do it every second. It's fine for now.
-        
+    void encodeMinute(const struct tm& timeinfo, int today_start_isdst, int tomorrow_start_isdst) override {
         encodeFrame(timeinfo, today_start_isdst, tomorrow_start_isdst);
+    }
 
-        int second = timeinfo.tm_sec;
+    TimeCodeSymbol getSymbolForSecond(int second) override {
         if (second < 0 || second > 59) return TimeCodeSymbol::ZERO; // Should not happen
 
-        // Check the bit in frameBits_
-        // frameBits_ is 60 bits. Bit 59 corresponds to second 0.
-        // Bit 0 corresponds to second 59.
-        // Wait, let's check the encoding loop.
-        // for(int i=0; i<60; i++) ... frameBits_ |= ... << (59-i)
-        // So second `i` corresponds to bit `59-i`.
-        
-        // Marker bits are not in frameBits_?
-        // Ah, encodeFrame sets frameBits_ for data bits.
-        // But markers are fixed.
-        // Let's check markers.
+        // Marker bits are not in frameBits_
         // 0, 9, 19, 29, 39, 49, 59 are Markers.
         if (second == 0 || second == 9 || second == 19 || second == 29 || second == 39 || second == 49 || second == 59) {
             return TimeCodeSymbol::MARK;

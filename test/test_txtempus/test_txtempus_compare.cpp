@@ -110,6 +110,13 @@ void run_comparison(const char* timezone, bool input_is_utc, bool add_minute, co
             localtime_r(&t_target, &tm_target);
         }
 
+        // Configure minute at the start
+        mySignal.encodeMinute(
+            tm_target, 
+            tm_today_start.tm_isdst, 
+            tm_tomorrow_start.tm_isdst
+        );
+
         for (int sec = 0; sec < 60; ++sec) {
             // Skip bits if requested
             bool skip = false;
@@ -126,11 +133,7 @@ void run_comparison(const char* timezone, bool input_is_utc, bool add_minute, co
             struct tm t_sec = tm_target;
             t_sec.tm_sec = sec; // Update second
             
-            TimeCodeSymbol myBit = mySignal.getSymbol(
-                t_sec, 
-                tm_today_start.tm_isdst, 
-                tm_tomorrow_start.tm_isdst
-            );
+            TimeCodeSymbol myBit = mySignal.getSymbolForSecond(sec);
 
             // Check sample points
             int check_points[] = {50, 150, 250, 550, 850};

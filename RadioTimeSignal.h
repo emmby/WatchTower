@@ -19,8 +19,14 @@ public:
     // Returns the carrier frequency in Hz
     virtual int getFrequency() = 0;
 
-    // Returns the signal symbol for the given time
-    virtual TimeCodeSymbol getSymbol(const struct tm& timeinfo, int today_isdst, int tomorrow_isdst) = 0;
+    // Encodes the signal for the upcoming minute.
+    // This should be called once at the beginning of each minute (second 0)
+    // before calling getSymbolForSecond
+    virtual void encodeMinute(const struct tm& timeinfo, int today_isdst, int tomorrow_isdst) = 0;
+
+    // Returns the signal symbol for the given second (0-59)
+    // for the minute encoded by encodeMinute
+    virtual TimeCodeSymbol getSymbolForSecond(int second) = 0;
 
     // Returns a logical high or low to indicate whether the
     // PWM signal should be high or low based on the current time

@@ -9,11 +9,11 @@ public:
         return 60000; // Can be 40kHz or 60kHz, defaulting to 60kHz
     }
 
-    TimeCodeSymbol getSymbol(const struct tm& timeinfo, int today_start_isdst, int tomorrow_start_isdst) override {
+    void encodeMinute(const struct tm& timeinfo, int today_start_isdst, int tomorrow_start_isdst) override {
         encodeFrame(timeinfo, today_start_isdst, tomorrow_start_isdst);
+    }
 
-
-        int second = timeinfo.tm_sec;
+    TimeCodeSymbol getSymbolForSecond(int second) override {
         if (second < 0 || second > 59) return TimeCodeSymbol::ZERO;
 
         // Marker bits are fixed
