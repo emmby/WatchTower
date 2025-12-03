@@ -29,6 +29,11 @@
 #include <time.h>
 #include <esp_sntp.h>
 #include "customJS.h"
+#include "RadioTimeSignal.h"
+#include "WWVBSignal.h"
+#include "DCF77Signal.h"
+#include "MSFSignal.h"
+#include "JJYSignal.h"
 
 // Flip to false to disable the built-in web ui.
 // You might want to do this to avoid leaving unnecessary open ports on your network.
@@ -40,19 +45,28 @@ const int PIN_ANTENNA = 13;
 // Set to your timezone.
 // This is needed for computing DST if applicable
 // https://gist.github.com/alwynallan/24d96091655391107939
+// Set to your timezone.
+// This is needed for computing DST if applicable
+// https://gist.github.com/alwynallan/24d96091655391107939
 const char *timezone = "PST8PDT,M3.2.0,M11.1.0"; // America/Los_Angeles
 
+// Default to WWVB if no signal is specified
+#if !defined(SIGNAL_WWVB) && !defined(SIGNAL_DCF77) && !defined(SIGNAL_MSF) && !defined(SIGNAL_JJY)
+#define SIGNAL_WWVB
+#endif
 
-enum WWVB_T {
-  ZERO = 0,
-  ONE = 1,
-  MARK = 2,
-};
+RadioTimeSignal* signalGenerator = nullptr;
 
-WWVB_T getWwvbBit(int, int, int, int, int, int, int);
-bool getWwvbSignalLevel(WWVB_T, int);
+#if defined(SIGNAL_WWVB)
+WWVBSignal wwvbSignal;
+#elif defined(SIGNAL_DCF77)
+DCF77Signal dcf77Signal;
+#elif defined(SIGNAL_MSF)
+MSFSignal msfSignal;
+#elif defined(SIGNAL_JJY)
+JJYSignal jjySignal;
+#endif
 
-const int KHZ_60 = 60000;
 const char* const ntpServer = "pool.ntp.org";
 
 // Configure the optional onboard neopixel
@@ -73,7 +87,7 @@ WiFiUDP udp;
 MDNS mdns(udp);
 bool logicValue = 0; // TODO rename
 struct timeval lastSync;
-WWVB_T broadcast[60];
+SignalBit_T broadcast[60];
 
 // ESPUI Interface IDs
 uint16_t ui_time;
@@ -108,7 +122,7 @@ static inline int is_leap_year(int year) {
 
 void clearBroadcastValues() {
     for(int i=0; i<sizeof(broadcast)/sizeof(broadcast[0]); ++i) {
-        broadcast[i] = (WWVB_T)-1; // -1 isn't legal but that's okay, we just need an invalid value
+        broadcast[i] = (SignalBit_T)-1; // -1 isn't legal but that's okay, we just need an invalid value
     }
 }
 
@@ -137,6 +151,17 @@ void setup() {
   wifiManager.autoConnect("WatchTower");
 
   clearBroadcastValues();
+
+  // Initialize the signal generator
+  #if defined(SIGNAL_WWVB)
+  signalGenerator = &wwvbSignal;
+  #elif defined(SIGNAL_DCF77)
+  signalGenerator = &dcf77Signal;
+  #elif defined(SIGNAL_MSF)
+  signalGenerator = &msfSignal;
+  #elif defined(SIGNAL_JJY)
+  signalGenerator = &jjySignal;
+  #endif
 
   // --- ESPUI SETUP ---
   ESPUI.setVerbosity(Verbosity::Quiet);
@@ -179,8 +204,8 @@ void setup() {
   }
   Serial.println("Got the time from NTP");
 
-  // Start the 60khz carrier signal using 8-bit (0-255) resolution
-  ledcAttach(PIN_ANTENNA, KHZ_60, 8);
+  // Start the carrier signal using 8-bit (0-255) resolution
+  ledcAttach(PIN_ANTENNA, signalGenerator->getFrequency(), 8);
 
   // green means go
   if( pixel ) {
@@ -219,7 +244,7 @@ void loop() {
 
   const bool prevLogicValue = logicValue;
 
-    WWVB_T bit = getWwvbBit(
+    SignalBit_T bit = signalGenerator->getBit(
         buf_now_utc.tm_hour,
         buf_now_utc.tm_min,
         buf_now_utc.tm_sec, 
@@ -234,7 +259,7 @@ void loop() {
     }
     broadcast[buf_now_utc.tm_sec] = bit;
 
-    logicValue = getWwvbSignalLevel(bit, now.tv_usec/1000);
+    logicValue = signalGenerator->getSignalLevel(bit, now.tv_usec/1000);
 
   // --- UI UPDATE LOGIC ---
   if( logicValue != prevLogicValue ) {
@@ -282,14 +307,17 @@ void loop() {
         // Broadcast window
         for( int i=0; i<60; ++i ) { // TODO leap seconds
         switch(broadcast[i]) {
-            case WWVB_T::MARK:
+            case SignalBit_T::MARK:
                 buf[i] = 'M';
                 break;
-            case WWVB_T::ZERO:
+            case SignalBit_T::ZERO:
                 buf[i] = '0';
                 break;
-            case WWVB_T::ONE:
+            case SignalBit_T::ONE:
                 buf[i] = '1';
+                break;
+            case SignalBit_T::IDLE:
+                buf[i] = '-';
                 break;
             default:
                 buf[i] = ' ';
@@ -330,218 +358,4 @@ void loop() {
 }
 
 
-// Returns the WWVB bit type for the given time
-// https://www.nist.gov/pml/time-and-frequency-division/time-distribution/radio-station-wwvb/wwvb-time-code-format
-WWVB_T getWwvbBit(
-    int hour,                // 0 - 23
-    int minute,              // 0 - 59
-    int second,              // 0 - 59 (leap 60)
-    int yday,                // days since January 1 eg. Jan 1 is 0
-    int year,                // year since 0, eg. 2025
-    int today_start_isdst,   // was this morning DST?
-    int tomorrow_start_isdst // is tomorrow morning DST?
-) {
-    int leap = is_leap_year(year);
-    
-    WWVB_T bit;
-    switch (second) {
-        case 0: // mark
-            bit = WWVB_T::MARK;
-            break;
-        case 1: // minute 40
-            bit = (WWVB_T)(((minute / 10) >> 2) & 1);
-            break;
-        case 2: // minute 20
-            bit = (WWVB_T)(((minute / 10) >> 1) & 1);
-            break;
-        case 3: // minute 10
-            bit = (WWVB_T)(((minute / 10) >> 0) & 1);
-            break;
-        case 4: // blank
-            bit = WWVB_T::ZERO;
-            break;
-        case 5: // minute 8
-            bit = (WWVB_T)(((minute % 10) >> 3) & 1);
-            break;
-        case 6: // minute 4
-            bit = (WWVB_T)(((minute % 10) >> 2) & 1);
-            break;
-        case 7: // minute 2
-            bit = (WWVB_T)(((minute % 10) >> 1) & 1);
-            break;
-        case 8: // minute 1
-            bit = (WWVB_T)(((minute % 10) >> 0) & 1);
-            break;
-        case 9: // mark
-            bit = WWVB_T::MARK;
-            break;
-        case 10: // blank
-            bit = WWVB_T::ZERO;
-            break;
-        case 11: // blank
-            bit = WWVB_T::ZERO;
-            break;
-        case 12: // hour 20
-            bit = (WWVB_T)(((hour / 10) >> 1) & 1);
-            break;
-        case 13: // hour 10
-            bit = (WWVB_T)(((hour / 10) >> 0) & 1);
-            break;
-        case 14: // blank
-            bit = WWVB_T::ZERO;
-            break;
-        case 15: // hour 8
-            bit = (WWVB_T)(((hour % 10) >> 3) & 1);
-            break;
-        case 16: // hour 4
-            bit = (WWVB_T)(((hour % 10) >> 2) & 1);
-            break;
-        case 17: // hour 2
-            bit = (WWVB_T)(((hour % 10) >> 1) & 1);
-            break;
-        case 18: // hour 1
-            bit = (WWVB_T)(((hour % 10) >> 0) & 1);
-            break;
-        case 19: // mark
-            bit = WWVB_T::MARK;
-            break;
-        case 20: // blank
-            bit = WWVB_T::ZERO;
-            break;
-        case 21: // blank
-            bit = WWVB_T::ZERO;
-            break;
-        case 22: // yday of year 200
-            bit = (WWVB_T)(((yday / 100) >> 1) & 1);
-            break;
-        case 23: // yday of year 100
-            bit = (WWVB_T)(((yday / 100) >> 0) & 1);
-            break;
-        case 24: // blank
-            bit = WWVB_T::ZERO;
-            break;
-        case 25: // yday of year 80
-            bit = (WWVB_T)((((yday / 10) % 10) >> 3) & 1);
-            break;
-        case 26: // yday of year 40
-            bit = (WWVB_T)((((yday / 10) % 10) >> 2) & 1);
-            break;
-        case 27: // yday of year 20
-            bit = (WWVB_T)((((yday / 10) % 10) >> 1) & 1);
-            break;
-        case 28: // yday of year 10
-            bit = (WWVB_T)((((yday / 10) % 10) >> 0) & 1);
-            break;
-        case 29: // mark
-            bit = WWVB_T::MARK;
-            break;
-        case 30: // yday of year 8
-            bit = (WWVB_T)(((yday % 10) >> 3) & 1);
-            break;
-        case 31: // yday of year 4
-            bit = (WWVB_T)(((yday % 10) >> 2) & 1);
-            break;
-        case 32: // yday of year 2
-            bit = (WWVB_T)(((yday % 10) >> 1) & 1);
-            break;
-        case 33: // yday of year 1
-            bit = (WWVB_T)(((yday % 10) >> 0) & 1);
-            break;
-        case 34: // blank
-            bit = WWVB_T::ZERO;
-            break;
-        case 35: // blank
-            bit = WWVB_T::ZERO;
-            break;
-        case 36: // UTI sign +
-            bit = WWVB_T::ONE;
-            break;
-        case 37: // UTI sign -
-            bit = WWVB_T::ZERO;
-            break;
-        case 38: // UTI sign +
-            bit = WWVB_T::ONE;
-            break;
-        case 39: // mark
-            bit = WWVB_T::MARK;
-            break;
-        case 40: // UTI correction 0.8
-            bit = WWVB_T::ZERO;
-            break;
-        case 41: // UTI correction 0.4
-            bit = WWVB_T::ZERO;
-            break;
-        case 42: // UTI correction 0.2
-            bit = WWVB_T::ZERO;
-            break;
-        case 43: // UTI correction 0.1
-            bit = WWVB_T::ZERO;
-            break;
-        case 44: // blank
-            bit = WWVB_T::ZERO;
-            break;
-        case 45: // year 80
-            bit = (WWVB_T)((((year / 10) % 10) >> 3) & 1);
-            break;
-        case 46: // year 40
-            bit = (WWVB_T)((((year / 10) % 10) >> 2) & 1);
-            break;
-        case 47: // year 20
-            bit = (WWVB_T)((((year / 10) % 10) >> 1) & 1);
-            break;
-        case 48: // year 10
-            bit = (WWVB_T)((((year / 10) % 10) >> 0) & 1);
-            break;
-        case 49: // mark
-            bit = WWVB_T::MARK;
-            break;
-        case 50: // year 8
-            bit = (WWVB_T)(((year % 10) >> 3) & 1);
-            break;
-        case 51: // year 4
-            bit = (WWVB_T)(((year % 10) >> 2) & 1);
-            break;
-        case 52: // year 2
-            bit = (WWVB_T)(((year % 10) >> 1) & 1);
-            break;
-        case 53: // year 1
-            bit = (WWVB_T)(((year % 10) >> 0) & 1);
-            break;
-        case 54: // blank
-            bit = WWVB_T::ZERO;
-            break;
-        case 55: // leap year
-            bit = leap ? WWVB_T::ONE : WWVB_T::ZERO;
-            break;
-        case 56: // leap second
-            bit = WWVB_T::ZERO;
-            break;
-        case 57: // dst bit 1
-            bit = today_start_isdst ? WWVB_T::ONE : WWVB_T::ZERO;
-            break;
-        case 58: // dst bit 2
-            bit = tomorrow_start_isdst ? WWVB_T::ONE : WWVB_T::ZERO;
-            break;
-        case 59: // mark
-            bit = WWVB_T::MARK;
-            break;
-    }
-    return bit;
-}
 
-// Returns a logical high or low to indicate whether the
-// PWM signal should be high or low based on the current time
-// https://www.nist.gov/pml/time-and-frequency-division/time-distribution/radio-station-wwvb/wwvb-time-code-format
-bool getWwvbSignalLevel(WWVB_T bit, int millis) {
-    // Convert a wwvb zero, one, or mark to the appropriate pulse width
-    // zero: low 200ms, high 800ms
-    // one: low 500ms, high 500ms
-    // mark low 800ms, high 200ms
-    if (bit == WWVB_T::ZERO) {
-      return millis >= 200;
-    } else if (bit == WWVB_T::ONE) {
-      return millis >= 500;
-    } else {
-      return millis >= 800;
-    }
-}
