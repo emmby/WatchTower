@@ -9,7 +9,7 @@ public:
         return 77500;
     }
 
-    SignalBit_T getBit(const struct tm& timeinfo, int today_start_isdst, int tomorrow_start_isdst) override {
+    TimeCodeSymbol getSymbol(const struct tm& timeinfo, int today_start_isdst, int tomorrow_start_isdst) override {
         // DCF77 sends the UPCOMING minute.
         struct tm next_min = timeinfo;
         next_min.tm_min += 1;
@@ -20,25 +20,25 @@ public:
 
 
         int second = timeinfo.tm_sec;
-        if (second < 0 || second > 59) return SignalBit_T::ZERO;
+        if (second < 0 || second > 59) return TimeCodeSymbol::ZERO;
 
         // DCF77 59th second is IDLE (no modulation, i.e., High)
         // But wait, my getSignalLevel(IDLE) returns true (High).
         // So we should return IDLE here.
-        if (second == 59) return SignalBit_T::IDLE;
+        if (second == 59) return TimeCodeSymbol::IDLE;
 
         bool bit = (frameBits_ >> (59 - second)) & 1;
-        return bit ? SignalBit_T::ONE : SignalBit_T::ZERO;
+        return bit ? TimeCodeSymbol::ONE : TimeCodeSymbol::ZERO;
     }
 
-    bool getSignalLevel(SignalBit_T bit, int millis) override {
+    bool getSignalLevel(TimeCodeSymbol symbol, int millis) override {
         // DCF77
         // 0: 100ms Low, 900ms High
         // 1: 200ms Low, 800ms High
         // IDLE: High (no modulation)
-        if (bit == SignalBit_T::IDLE) {
+        if (symbol == TimeCodeSymbol::IDLE) {
             return true; // Always High
-        } else if (bit == SignalBit_T::ZERO) {
+        } else if (symbol == TimeCodeSymbol::ZERO) {
             return millis >= 100;
         } else { // ONE
             return millis >= 200;

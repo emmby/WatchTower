@@ -126,7 +126,7 @@ void run_comparison(const char* timezone, bool input_is_utc, bool add_minute, co
             struct tm t_sec = tm_target;
             t_sec.tm_sec = sec; // Update second
             
-            SignalBit_T myBit = mySignal.getBit(
+            TimeCodeSymbol myBit = mySignal.getSymbol(
                 t_sec, 
                 tm_today_start.tm_isdst, 
                 tm_tomorrow_start.tm_isdst

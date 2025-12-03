@@ -9,46 +9,46 @@ public:
         return 60000;
     }
 
-    SignalBit_T getBit(const struct tm& timeinfo, int today_start_isdst, int tomorrow_start_isdst) override {
+    TimeCodeSymbol getSymbol(const struct tm& timeinfo, int today_start_isdst, int tomorrow_start_isdst) override {
         encodeFrame(timeinfo, today_start_isdst, tomorrow_start_isdst);
 
 
 
         int second = timeinfo.tm_sec;
-        if (second < 0 || second > 59) return SignalBit_T::ZERO;
+        if (second < 0 || second > 59) return TimeCodeSymbol::ZERO;
 
-        if (second == 0) return SignalBit_T::MARK;
+        if (second == 0) return TimeCodeSymbol::MARK;
 
         bool a = (aBits_ >> (59 - second)) & 1;
         bool b = (bBits_ >> (59 - second)) & 1;
 
-        // Encode SignalBit_T based on A and B
+        // Encode TimeCodeSymbol based on A and B
         // 00 -> ZERO
         // 10 -> ONE
         // 01 -> MSF_01
         // 11 -> MSF_11
         
-        if (!a && !b) return SignalBit_T::ZERO;
-        if (a && !b) return SignalBit_T::ONE;
-        if (!a && b) return SignalBit_T::MSF_01;
-        if (a && b) return SignalBit_T::MSF_11;
+        if (!a && !b) return TimeCodeSymbol::ZERO;
+        if (a && !b) return TimeCodeSymbol::ONE;
+        if (!a && b) return TimeCodeSymbol::MSF_01;
+        if (a && b) return TimeCodeSymbol::MSF_11;
         
-        return SignalBit_T::ZERO;
+        return TimeCodeSymbol::ZERO;
     }
 
-    bool getSignalLevel(SignalBit_T bit, int millis) override {
+    bool getSignalLevel(TimeCodeSymbol symbol, int millis) override {
         // MSF
         // 0-100: OFF
         // 100-200: A (OFF if 1)
         // 200-300: B (OFF if 1)
         // 300+: HIGH
         
-        if (bit == SignalBit_T::MARK) {
+        if (symbol == TimeCodeSymbol::MARK) {
             return millis >= 500;
         }
         
-        bool a = (bit == SignalBit_T::ONE || bit == SignalBit_T::MSF_11);
-        bool b = (bit == SignalBit_T::MSF_01 || bit == SignalBit_T::MSF_11);
+        bool a = (symbol == TimeCodeSymbol::ONE || symbol == TimeCodeSymbol::MSF_11);
+        bool b = (symbol == TimeCodeSymbol::MSF_01 || symbol == TimeCodeSymbol::MSF_11);
         
         if (millis < 100) return false; // Always OFF 0-100
         if (millis < 200) return !a;    // OFF if A=1

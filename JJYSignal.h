@@ -9,31 +9,31 @@ public:
         return 60000; // Can be 40kHz or 60kHz, defaulting to 60kHz
     }
 
-    SignalBit_T getBit(const struct tm& timeinfo, int today_start_isdst, int tomorrow_start_isdst) override {
+    TimeCodeSymbol getSymbol(const struct tm& timeinfo, int today_start_isdst, int tomorrow_start_isdst) override {
         encodeFrame(timeinfo, today_start_isdst, tomorrow_start_isdst);
 
 
         int second = timeinfo.tm_sec;
-        if (second < 0 || second > 59) return SignalBit_T::ZERO;
+        if (second < 0 || second > 59) return TimeCodeSymbol::ZERO;
 
-        // JJY Markers: 0, 9, 19, 29, 39, 49, 59
-        if (second == 0 || second % 10 == 9) {
-            return SignalBit_T::MARK;
+        // Marker bits are fixed
+        if (second == 0 || second == 9 || second == 19 || second == 29 || second == 39 || second == 49 || second == 59) {
+            return TimeCodeSymbol::MARK;
         }
 
         bool bit = (frameBits_ >> (59 - second)) & 1;
-        return bit ? SignalBit_T::ONE : SignalBit_T::ZERO;
+        return bit ? TimeCodeSymbol::ONE : TimeCodeSymbol::ZERO;
     }
 
-    bool getSignalLevel(SignalBit_T bit, int millis) override {
+    bool getSignalLevel(TimeCodeSymbol symbol, int millis) override {
         // JJY
-        // MARK: High 200ms, Low 800ms
-        // ONE: High 500ms, Low 500ms
-        // ZERO: High 800ms, Low 200ms
+        // 0: 800ms High, 200ms Low
+        // 1: 500ms High, 500ms Low
+        // MARK: 200ms High, 800ms Low
         
-        if (bit == SignalBit_T::MARK) {
+        if (symbol == TimeCodeSymbol::MARK) {
             return millis < 200;
-        } else if (bit == SignalBit_T::ONE) {
+        } else if (symbol == TimeCodeSymbol::ONE) {
             return millis < 500;
         } else { // ZERO
             return millis < 800;

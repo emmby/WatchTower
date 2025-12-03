@@ -9,48 +9,51 @@ public:
         return 60000;
     }
 
-    SignalBit_T getBit(const struct tm& timeinfo, int today_start_isdst, int tomorrow_start_isdst) override {
-        // Check if we need to re-calculate the frame
-        // We use a simple check: if the minute has changed, or if it's the first run.
-        // However, timeinfo doesn't strictly increase (tests might jump around).
-        // So we should probably check if the cached frame matches the requested minute.
-        // But we don't store the requested minute in the class state other than for caching.
-        // Let's just re-calculate if the minute or hour or day etc changes?
-        // On the MCU, time moves forward second by second.
+    TimeCodeSymbol getSymbol(const struct tm& timeinfo, int today_start_isdst, int tomorrow_start_isdst) override {
+        // WWVB sends the current minute.
+        // However, the frame bits are calculated based on the minute.
+        // If we are in the middle of a minute, we should use the cached frame bits if possible.
+        // But since we don't have caching yet, we just recalculate.
+        // The only expensive part is the frame calculation which happens once per minute ideally.
+        // But here we do it every second. It's fine for now.
+        
         encodeFrame(timeinfo, today_start_isdst, tomorrow_start_isdst);
 
         int second = timeinfo.tm_sec;
-        if (second < 0 || second > 59) return SignalBit_T::ZERO; // Should not happen
+        if (second < 0 || second > 59) return TimeCodeSymbol::ZERO; // Should not happen
 
-        // Check for MARK bits which are not part of the data payload usually, 
-        // but in txtempus they are just bits.
-        // In WWVB:
-        // 0, 9, 19, 29, 39, 49, 59 are MARKs.
-        // But wait, txtempus handles them in `GetModulationForSecond`.
-        // "If sec == 0 || sec % 10 == 9 || sec > 59 ... return MARK"
-        // So we should do the same check here before looking at frameBits_.
+        // Check the bit in frameBits_
+        // frameBits_ is 60 bits. Bit 59 corresponds to second 0.
+        // Bit 0 corresponds to second 59.
+        // Wait, let's check the encoding loop.
+        // for(int i=0; i<60; i++) ... frameBits_ |= ... << (59-i)
+        // So second `i` corresponds to bit `59-i`.
         
-        if (second == 0 || second % 10 == 9) {
-            return SignalBit_T::MARK;
+        // Marker bits are not in frameBits_?
+        // Ah, encodeFrame sets frameBits_ for data bits.
+        // But markers are fixed.
+        // Let's check markers.
+        // 0, 9, 19, 29, 39, 49, 59 are Markers.
+        if (second == 0 || second == 9 || second == 19 || second == 29 || second == 39 || second == 49 || second == 59) {
+            return TimeCodeSymbol::MARK;
         }
-
-        // Get the bit from the frame
-        // txtempus: const bool bit = time_bits_ & (1LL << (59 - sec));
-        bool bit = (frameBits_ >> (59 - second)) & 1;
-        return bit ? SignalBit_T::ONE : SignalBit_T::ZERO;
+        
+        // Check data bit
+        bool bitSet = (frameBits_ >> (59 - second)) & 1;
+        return bitSet ? TimeCodeSymbol::ONE : TimeCodeSymbol::ZERO;
     }
 
-    bool getSignalLevel(SignalBit_T bit, int millis) override {
-        // Convert a wwvb zero, one, or mark to the appropriate pulse width
-        // zero: low 200ms, high 800ms
-        // one: low 500ms, high 500ms
-        // mark low 800ms, high 200ms
-        if (bit == SignalBit_T::ZERO) {
-            return millis >= 200;
-        } else if (bit == SignalBit_T::ONE) {
-            return millis >= 500;
-        } else {
+    bool getSignalLevel(TimeCodeSymbol symbol, int millis) override {
+        // WWVB
+        // 0: 200ms Low, 800ms High
+        // 1: 500ms Low, 500ms High
+        // MARK: 800ms Low, 200ms High
+        if (symbol == TimeCodeSymbol::MARK) {
             return millis >= 800;
+        } else if (symbol == TimeCodeSymbol::ONE) {
+            return millis >= 500;
+        } else { // ZERO
+            return millis >= 200;
         }
     }
 

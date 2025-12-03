@@ -82,7 +82,7 @@ WiFiUDP udp;
 MDNS mdns(udp);
 bool logicValue = 0; // TODO rename
 struct timeval lastSync;
-SignalBit_T broadcast[60];
+TimeCodeSymbol broadcast[60];
 
 // ESPUI Interface IDs
 uint16_t ui_time;
@@ -117,7 +117,7 @@ static inline int is_leap_year(int year) {
 
 void clearBroadcastValues() {
     for(int i=0; i<sizeof(broadcast)/sizeof(broadcast[0]); ++i) {
-        broadcast[i] = (SignalBit_T)-1; // -1 isn't legal but that's okay, we just need an invalid value
+        broadcast[i] = (TimeCodeSymbol)-1; // -1 isn't legal but that's okay, we just need an invalid value
     }
 }
 
@@ -228,7 +228,7 @@ void loop() {
 
   const bool prevLogicValue = logicValue;
 
-    SignalBit_T bit = signalGenerator->getBit(
+    TimeCodeSymbol bit = signalGenerator->getSymbol(
         buf_now_utc,
         buf_today_start.tm_isdst,
         buf_tomorrow_start.tm_isdst
@@ -287,16 +287,16 @@ void loop() {
         // Broadcast window
         for( int i=0; i<60; ++i ) { // TODO leap seconds
         switch(broadcast[i]) {
-            case SignalBit_T::MARK:
+            case TimeCodeSymbol::MARK:
                 buf[i] = 'M';
                 break;
-            case SignalBit_T::ZERO:
+            case TimeCodeSymbol::ZERO:
                 buf[i] = '0';
                 break;
-            case SignalBit_T::ONE:
+            case TimeCodeSymbol::ONE:
                 buf[i] = '1';
                 break;
-            case SignalBit_T::IDLE:
+            case TimeCodeSymbol::IDLE:
                 buf[i] = '-';
                 break;
             default:
