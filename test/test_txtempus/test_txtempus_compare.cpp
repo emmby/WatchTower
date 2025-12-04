@@ -5,11 +5,11 @@
 #include <string>
 
 // Include our signal classes
-#include "../../RadioTimeSignal.h"
-#include "../../WWVBSignal.h"
-#include "../../DCF77Signal.h"
-#include "../../MSFSignal.h"
-#include "../../JJYSignal.h"
+#include "RadioTimeSignal.h"
+#include "WWVBSignal.h"
+#include "DCF77Signal.h"
+#include "MSFSignal.h"
+#include "JJYSignal.h"
 
 // Include txtempus headers
 #undef HIGH

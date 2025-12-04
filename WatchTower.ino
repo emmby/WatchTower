@@ -29,11 +29,11 @@
 #include <time.h>
 #include <esp_sntp.h>
 #include "customJS.h"
-#include "RadioTimeSignal.h"
-#include "WWVBSignal.h"
-#include "DCF77Signal.h"
-#include "MSFSignal.h"
-#include "JJYSignal.h"
+#include "include/RadioTimeSignal.h"
+#include "include/WWVBSignal.h"
+#include "include/DCF77Signal.h"
+#include "include/MSFSignal.h"
+#include "include/JJYSignal.h"
 
 // Flip to false to disable the built-in web ui.
 // You might want to do this to avoid leaving unnecessary open ports on your network.
