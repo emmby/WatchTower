@@ -440,6 +440,7 @@ void loop() {
                 break;
         }
         }
+        buf[60] = '\0';
         ESPUI.print(ui_broadcast, buf);
 
 
