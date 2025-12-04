@@ -96,22 +96,31 @@ void updateManualTimeCallback(Control *sender, int value) {
         manualTime = sender->value;
     }
 
-    if (manualDate.length() > 0 && manualTime.length() > 0) {
-        String dateTime = manualDate + " " + manualTime;
-        struct tm tm;
-        // Expected format from date/time inputs: YYYY-MM-DD and HH:MM
-        // But browser date input might be YYYY-MM-DD, time might be HH:MM
-        // Let's assume standard ISO format which these inputs usually return.
-        // strptime format: "%Y-%m-%d %H:%M"
-        if (strptime(dateTime.c_str(), "%Y-%m-%d %H:%M", &tm)) {
-            tm.tm_sec = 0; // Reset seconds
-            time_t t = mktime(&tm);
-            struct timeval tv = { .tv_sec = t, .tv_usec = 0 };
-            settimeofday(&tv, NULL);
-            Serial.println("Manual time set: " + dateTime);
-        } else {
-            Serial.println("Invalid date/time format: " + dateTime);
-        }
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    struct tm tm;
+    localtime_r(&now.tv_sec, &tm);
+
+    if (manualDate.length() > 0) {
+        // Parse YYYY-MM-DD
+        strptime(manualDate.c_str(), "%Y-%m-%d", &tm);
+    }
+    
+    if (manualTime.length() > 0) {
+        // Parse HH:MM
+        strptime(manualTime.c_str(), "%H:%M", &tm);
+        tm.tm_sec = 0; // Reset seconds when setting time
+    }
+
+    tm.tm_isdst = -1; // Let mktime determine DST
+    time_t t = mktime(&tm);
+    
+    if (t != -1) {
+        struct timeval tv = { .tv_sec = t, .tv_usec = 0 };
+        settimeofday(&tv, NULL);
+        Serial.println("Manual time updated");
+    } else {
+        Serial.println("Failed to set manual time");
     }
 }
 
