@@ -71,7 +71,7 @@ WiFiUDP udp;
 MDNS mdns(udp);
 Preferences preferences;
 bool logicValue = 0; // TODO rename
-struct timeval lastSync;
+unsigned long lastSync = 0;
 WWVB_T broadcast[60];
 bool networkSyncEnabled = true;
 
@@ -118,7 +118,7 @@ void updateManualTimeCallback(Control *sender, int value) {
 // A callback that tracks when we last sync'ed the
 // time with the ntp server
 void time_sync_notification_cb(struct timeval *tv) {
-  lastSync = *tv;
+  lastSync = millis();
 }
 
 // A callback that is called when the device
@@ -337,9 +337,8 @@ void loop() {
     sprintf(timeStringBuff2,"%s.%03d%s", timeStringBuff, now.tv_usec/1000, timeStringBuff3 ); // time+millis+tz
 
     char lastSyncStringBuff[100]; // Buffer to hold the formatted time string
-    struct tm buf_lastSync;
-    localtime_r(&lastSync.tv_sec, &buf_lastSync);
-    strftime(lastSyncStringBuff, sizeof(lastSyncStringBuff), "%b %d %H:%M", &buf_lastSync);
+    unsigned long secondsSinceSync = (millis() - lastSync) / 1000;
+    snprintf(lastSyncStringBuff, sizeof(lastSyncStringBuff), "%lus ago", secondsSinceSync);
     Serial.printf("%s [last sync %s]: %s\n",timeStringBuff2, lastSyncStringBuff, logicValue ? "1" : "0");
 
     static int prevSecond = -1;
@@ -387,13 +386,14 @@ void loop() {
         ESPUI.print(ui_uptime, buf);
 
         // Last Sync
-        strftime(buf, sizeof(buf), "%b %d %H:%M", &buf_lastSync);
+        unsigned long secondsSinceSync = (millis() - lastSync) / 1000;
+        snprintf(buf, sizeof(buf), "%lus ago", secondsSinceSync);
         ESPUI.print(ui_last_sync, buf);
     }
 
     // Check for stale sync (24 hours)
     // Check for stale sync (24 hours)
-    if( networkSyncEnabled && (now.tv_sec - lastSync.tv_sec > 60 * 60 * 24) ) {
+    if( networkSyncEnabled && (millis() - lastSync > 24 * 60 * 60 * 1000) ) {
       Serial.println("Last sync more than 24 hours ago, rebooting.");
       if( pixel ) {
         pixel->setPixelColor(0, COLOR_ERROR );
