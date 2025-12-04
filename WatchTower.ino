@@ -392,7 +392,6 @@ void loop() {
     }
 
     // Check for stale sync (24 hours)
-    // Check for stale sync (24 hours)
     if( networkSyncEnabled && (millis() - lastSync > 24 * 60 * 60 * 1000) ) {
       Serial.println("Last sync more than 24 hours ago, rebooting.");
       if( pixel ) {
