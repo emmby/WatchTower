@@ -66,7 +66,12 @@ SerialMock MySerial;
 #define Serial MySerial
 
 // ESP32 specific mocks
-void ledcAttach(uint8_t pin, double freq, uint8_t resolution) {}
+// Global to track last ledc frequency
+int last_ledc_freq = 0;
+void ledcAttach(uint8_t pin, double freq, uint8_t resolution) {
+    last_ledc_freq = (int)freq;
+}
+void ledcDetach(uint8_t pin) {}
 void ledcWrite(uint8_t pin, uint32_t duty) {}
 void configTzTime(const char* tz, const char* server1, const char* server2 = nullptr, const char* server3 = nullptr) {}
 bool getLocalTime(struct tm* info, uint32_t ms = 5000) {
@@ -295,6 +300,52 @@ void test_msf_signal(void) {
     TEST_ASSERT_TRUE(msf.getSignalLevel(bit, 100));
 }
 
+// Access to globals from WatchTower.ino
+extern RadioTimeSignal* signalGenerator;
+extern void updateSignalCallback(Control *sender, int value);
+extern uint16_t ui_signal_select;
+
+// last_ledc_freq is defined globally now
+
+void test_signal_switching(void) {
+    // Arrange
+    setup(); // Ensure UI is created
+    
+    // Act - Select DCF77
+    Control sender;
+    sender.id = ui_signal_select;
+    sender.value = "DCF77";
+    updateSignalCallback(&sender, S_ACTIVE);
+    
+    // Assert
+    TEST_ASSERT_EQUAL_STRING("DCF77", signalGenerator->getName().c_str());
+    TEST_ASSERT_EQUAL(77500, last_ledc_freq);
+    
+    // Act - Select MSF
+    sender.value = "MSF";
+    updateSignalCallback(&sender, S_ACTIVE);
+    
+    // Assert
+    TEST_ASSERT_EQUAL_STRING("MSF", signalGenerator->getName().c_str());
+    TEST_ASSERT_EQUAL(60000, last_ledc_freq);
+    
+    // Act - Select JJY
+    sender.value = "JJY";
+    updateSignalCallback(&sender, S_ACTIVE);
+    
+    // Assert
+    TEST_ASSERT_EQUAL_STRING("JJY", signalGenerator->getName().c_str());
+    TEST_ASSERT_EQUAL(40000, last_ledc_freq); // or 60000 depending on impl
+    
+    // Act - Select WWVB
+    sender.value = "WWVB";
+    updateSignalCallback(&sender, S_ACTIVE);
+    
+    // Assert
+    TEST_ASSERT_EQUAL_STRING("WWVB", signalGenerator->getName().c_str());
+    TEST_ASSERT_EQUAL(60000, last_ledc_freq);
+}
+
 int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_setup_completes);
@@ -305,6 +356,7 @@ int main(int argc, char **argv) {
     RUN_TEST(test_dcf77_signal);
     RUN_TEST(test_jjy_signal);
     RUN_TEST(test_msf_signal);
+    RUN_TEST(test_signal_switching);
     UNITY_END();
     return 0;
 }
