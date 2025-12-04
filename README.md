@@ -1,4 +1,4 @@
-# The Watch Tower WWVB transmitter
+# The Watch Tower time signal transmitter
 
 ![](docs/ezgif-2a44364473c432.gif)
 
@@ -6,7 +6,15 @@ There are some beautiful radio-controlled watches available these days from Citi
 
 In the US, these watches work by receiving a 60-bit 1-Hz signal on a 60-kHz carrier wave broadcast from Fort Collins, Colorado called [WWVB](https://en.wikipedia.org/wiki/WWVB). The broadcast is quite strong and generally covers the entire continental US, but some areas of the country can have unreliable reception. I live in the SF Bay Area in an area with high RF noise and my reception can be spotty. My watches sync often enough that it’s not an issue 363 days out of the year, but sometimes they can miss DST shifts for a day or two. The east coast is known to be even more challenging. And people who live in other countries such as Australia have generally been out of luck.
 
+Similar systems exist in other parts of the world, such as [DCF77](https://en.wikipedia.org/wiki/DCF77) in Germany (covering much of Europe), [MSF](https://en.wikipedia.org/wiki/Time_from_NPL_(MSF)) in the UK, and [JJY](https://en.wikipedia.org/wiki/JJY) in Japan.
+
 Wouldn’t it be great if anyone anywhere in the world could set up a home transmitter to broadcast the time so their watches were always in sync?
+
+WatchTower supports all of these signals! By default it transmits WWVB, but it can be easily configured to transmit DCF77, MSF, or JJY.
+
+> [!NOTE]
+> DCF77, MSF, and JJY support is all experimental and has not been extensively tested.
+> Please file an issue if you run into any problems.
 
 WWVB has been around awhile and there have been various other projects ([1](https://www.instructables.com/WWVB-radio-time-signal-generator-for-ATTINY45-or-A/),[2](https://github.com/anishathalye/micro-wwvb)) that have demonstrated the feasibility of making your own WWVB transmitter. But these all had very limited range. I wanted to build something that could cover my whole watch stand and be based on a more familiar toolset for the typical hobbyist, namely USB-based 32-bit microcontroller development boards, WiFi, and Arduino. My goal was to make something approachable, reliable, and attractive enough it could sit with my watch collection.
 
@@ -15,6 +23,9 @@ WWVB has been around awhile and there have been various other projects ([1](http
 The FCC requires a license to transmit, but has an [exemption](https://www.law.cornell.edu/cfr/text/47/15.209) for 60 kHz transmitters as long as the field strength is under 40 *μ*V/m at 300 meters. You will [definitely not](https://github.com/emmby/WatchTower/issues/9) exceed this limit 💪🏼
 
 ## About WWVB
+
+> [!NOTE]
+> This section will dive into WWVB because that's the signal the WatchTower uses by default. You can check wikipedia for more details on JJY, DCF77, and MSF.
 
 The classic WWVB transmits one bit of information per second (1Hz) and takes one minute (60 bits) to transmit a full time and date frame.
 
