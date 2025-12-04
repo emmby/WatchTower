@@ -6,7 +6,7 @@
 class JJYSignal : public RadioTimeSignal {
 public:
     int getFrequency() override {
-        return 40000; // or 60000
+        return 60000; // or 40000
     }
 
     String getName() override {
