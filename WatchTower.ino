@@ -28,6 +28,7 @@
 #include <ArduinoMDNS.h>
 #include <time.h>
 #include <esp_sntp.h>
+#include <Preferences.h>
 #include "customJS.h"
 
 // Flip to false to disable the built-in web ui.
@@ -68,9 +69,11 @@ const uint32_t COLOR_TRANSMIT = pixel ? pixel->Color(32, 0, 0) : 0; // dim red h
 WiFiManager wifiManager;
 WiFiUDP udp;
 MDNS mdns(udp);
+Preferences preferences;
 bool logicValue = 0; // TODO rename
 struct timeval lastSync;
 WWVB_T broadcast[60];
+bool networkSyncEnabled = true;
 
 // ESPUI Interface IDs
 uint16_t ui_time;
@@ -79,6 +82,7 @@ uint16_t ui_timezone;
 uint16_t ui_broadcast;
 uint16_t ui_uptime;
 uint16_t ui_last_sync;
+uint16_t ui_network_sync_switch;
 
 // A callback that tracks when we last sync'ed the
 // time with the ntp server
@@ -109,6 +113,27 @@ void clearBroadcastValues() {
     }
 }
 
+// Callback for when the network sync switch is toggled
+void updateSyncCallback(Control *sender, int value) {
+  if (sender->id == ui_network_sync_switch) {
+    networkSyncEnabled = (value == S_ACTIVE);
+    preferences.putBool("net_sync", networkSyncEnabled);
+    Serial.printf("Network Sync changed to: %s\n", networkSyncEnabled ? "ENABLED" : "DISABLED");
+    
+    if (networkSyncEnabled) {
+        // Re-enable sync
+        esp_sntp_stop();
+        configTzTime(timezone, ntpServer);
+        Serial.println("NTP Sync re-enabled");
+    } else {
+        // Disable sync
+        esp_sntp_stop(); 
+        Serial.println("NTP Sync disabled");
+    }
+  }
+}
+
+
 void setup() {
   Serial.begin(115200);
   delay(1000);
@@ -133,6 +158,9 @@ void setup() {
   wifiManager.setAPCallback(accesspointCallback);
   wifiManager.autoConnect("WatchTower");
 
+  preferences.begin("watchtower", false);
+  networkSyncEnabled = preferences.getBool("net_sync", true);
+
   clearBroadcastValues();
 
   // --- ESPUI SETUP ---
@@ -145,6 +173,8 @@ void setup() {
   ui_timezone = ESPUI.label("Timezone", ControlColor::Peterriver, timezone);
   ui_uptime = ESPUI.label("System Uptime", ControlColor::Carrot, "0s");
   ui_last_sync = ESPUI.label("Last NTP Sync", ControlColor::Alizarin, "Pending...");
+  ui_network_sync_switch = ESPUI.switcher("Network Sync", updateSyncCallback, ControlColor::Sunflower, networkSyncEnabled);
+
 
   ESPUI.setPanelWide(ui_broadcast, true);
   ESPUI.setElementStyle(ui_broadcast, "font-family: monospace");
@@ -162,19 +192,33 @@ void setup() {
   // Connect to network time server
   // By default, it will resync every few hours
   sntp_set_time_sync_notification_cb(time_sync_notification_cb);
-  configTzTime(timezone, ntpServer);
+  
+  if (networkSyncEnabled) {
+      configTzTime(timezone, ntpServer);
+  } else {
+      // When network sync is disabled, we still need to configure the timezone
+      // so that localtime() works correctly.
+      setenv("TZ", timezone, 1);
+      tzset();
+  }
   
   struct tm timeinfo;
-  if(!getLocalTime(&timeinfo)){
-    Serial.println("Failed to obtain time");
-    if( pixel ) {
-        pixel->setPixelColor(0, COLOR_ERROR );
-        pixel->show();
+  // Only block on time if sync is enabled
+  if (networkSyncEnabled) {
+    if (getLocalTime(&timeinfo)) {
+      Serial.println("Got the time from NTP");
+    } else {
+      Serial.println("Failed to obtain time");
+      if( pixel ) {
+          pixel->setPixelColor(0, COLOR_ERROR );
+          pixel->show();
+      }
+      delay(3000);
+      ESP.restart();
     }
-    delay(3000);
-    ESP.restart();
+  } else {
+      Serial.println("Network sync disabled, skipping initial time check.");
   }
-  Serial.println("Got the time from NTP");
 
   // Start the 60khz carrier signal using 8-bit (0-255) resolution
   ledcAttach(PIN_ANTENNA, KHZ_60, 8);
@@ -305,7 +349,8 @@ void loop() {
     }
 
     // Check for stale sync (24 hours)
-    if( now.tv_sec - lastSync.tv_sec > 60 * 60 * 24 ) {
+    // Check for stale sync (24 hours)
+    if( networkSyncEnabled && (now.tv_sec - lastSync.tv_sec > 60 * 60 * 24) ) {
       Serial.println("Last sync more than 24 hours ago, rebooting.");
       if( pixel ) {
         pixel->setPixelColor(0, COLOR_ERROR );

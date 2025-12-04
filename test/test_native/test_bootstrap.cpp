@@ -70,6 +70,7 @@ bool getLocalTime(struct tm* info, uint32_t ms = 5000) {
     return true;
 }
 void sntp_set_time_sync_notification_cb(sntp_sync_time_cb_t callback) {}
+void esp_sntp_stop() {}
 
 // Forward declarations for functions in WatchTower.ino that are used before definition
 bool wwvbLogicSignal(int, int, int, int, int, int, int, int);
