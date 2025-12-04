@@ -392,7 +392,8 @@ void loop() {
     }
 
     // Check for stale sync (24 hours)
-    if( networkSyncEnabled && (millis() - lastSync > 24 * 60 * 60 * 1000) ) {
+    // Only restart if it's past 12pm local time to avoid rebooting while a device is syncing
+    if( networkSyncEnabled && (millis() - lastSync > 24 * 60 * 60 * 1000) && buf_now_local.tm_hour >= 12 ) {
       Serial.println("Last sync more than 24 hours ago, rebooting.");
       if( pixel ) {
         pixel->setPixelColor(0, COLOR_ERROR );
