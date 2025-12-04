@@ -81,7 +81,6 @@ public:
 
 private:
     TimeCodeSymbol frameBits_[60];
-
 };
 
 #endif // WWVB_SIGNAL_H

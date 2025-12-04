@@ -123,11 +123,6 @@ public:
 
 private:
     TimeCodeSymbol frameBits_[60];
-    int lastEncodedMinute_ = -1;
-
-    void encodeFrame(const struct tm& timeinfo, int today_start_isdst, int tomorrow_start_isdst) {
-        // Deprecated/Removed. Logic moved to encodeMinute.
-    }
 };
 
 #endif // DCF77_SIGNAL_H
