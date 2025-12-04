@@ -145,12 +145,19 @@ void test_serial_date_output(void) {
     TEST_ASSERT_NOT_NULL(strstr(MySerial.output.c_str(), "December 25 2025"));
 }
 
-// Helper to adapt legacy calls to new interface
+// Shared valid timeinfo for tests (2000-01-01 12:00:00)
+const struct tm kValidTimeInfo = []{
+    struct tm t = {0};
+    t.tm_year = 100; // 2000
+    t.tm_mon = 0;    // Jan
+    t.tm_mday = 1;   // 1st
+    t.tm_hour = 12;
+    return t;
+}();
 
 void test_wwvb_logic_signal(void) {
     WWVBSignal wwvb;
-    struct tm timeinfo = {0};
-    timeinfo.tm_sec = 0;
+    struct tm timeinfo = kValidTimeInfo;
     wwvb.encodeMinute(timeinfo, 0, 0);
     
     // Test MARK (0s)
@@ -217,7 +224,7 @@ void test_wwvb_frame_encoding(void) {
 
 void test_dcf77_signal(void) {
     DCF77Signal dcf77;
-    struct tm timeinfo = {0};
+    struct tm timeinfo = kValidTimeInfo;
     dcf77.encodeMinute(timeinfo, 0, 0);
     
     // Test IDLE (59th second)
@@ -237,7 +244,7 @@ void test_dcf77_signal(void) {
 
 void test_jjy_signal(void) {
     JJYSignal jjy;
-    struct tm timeinfo = {0};
+    struct tm timeinfo = kValidTimeInfo;
     jjy.encodeMinute(timeinfo, 0, 0);
     
     // Test MARK (0s)
@@ -265,7 +272,7 @@ void test_jjy_signal(void) {
 
 void test_msf_signal(void) {
     MSFSignal msf;
-    struct tm timeinfo = {0};
+    struct tm timeinfo = kValidTimeInfo;
     msf.encodeMinute(timeinfo, 0, 0);
     
     // Test MARK (0s)
