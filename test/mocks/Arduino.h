@@ -33,6 +33,10 @@ public:
     String operator+(const String& other) const { return String(_s + other._s); }
     String operator+(const char* other) const { return String(_s + other); }
     friend String operator+(const char* lhs, const String& rhs) { return String(lhs + rhs._s); }
+    bool operator==(const String& other) const { return _s == other._s; }
+    bool operator==(const char* other) const { return _s == other; }
+    bool operator!=(const String& other) const { return _s != other._s; }
+    bool operator!=(const char* other) const { return _s != other; }
 };
 
 void delay(unsigned long ms);
