@@ -13,7 +13,7 @@ Wouldn’t it be great if anyone anywhere in the world could set up a home trans
 WatchTower supports all of these signals! By default it transmits WWVB, but it can be easily configured to transmit DCF77, MSF, or JJY.
 
 > [!NOTE]
-> DCF77, MSF, and JJY support is all experimental and has not been extensively tested.
+> DCF77, MSF, and JJY support is experimental and has not been extensively tested.
 > Please file an issue if you run into any problems.
 
 WWVB has been around awhile and there have been various other projects ([1](https://www.instructables.com/WWVB-radio-time-signal-generator-for-ATTINY45-or-A/),[2](https://github.com/anishathalye/micro-wwvb)) that have demonstrated the feasibility of making your own WWVB transmitter. But these all had very limited range. I wanted to build something that could cover my whole watch stand and be based on a more familiar toolset for the typical hobbyist, namely USB-based 32-bit microcontroller development boards, WiFi, and Arduino. My goal was to make something approachable, reliable, and attractive enough it could sit with my watch collection.
