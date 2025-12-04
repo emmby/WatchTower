@@ -175,6 +175,7 @@ void updateSignalCallback(Control *sender, int value) {
         Serial.println("Signal changed to: " + signalGenerator->getName());
         
         // Update PWM frequency
+        ledcDetach(PIN_ANTENNA);
         ledcAttach(PIN_ANTENNA, signalGenerator->getFrequency(), 8);
     }
 }
