@@ -36,6 +36,12 @@ int mock_gettimeofday(struct timeval *tv, void *tz) {
 }
 #define gettimeofday mock_gettimeofday
 
+int mock_settimeofday(const struct timeval *tv, const struct timezone *tz) {
+    if (tv) mock_tv = *tv;
+    return 0;
+}
+#define settimeofday mock_settimeofday
+
 // Mock Serial to support printf
 class SerialMock {
 public:
@@ -70,6 +76,7 @@ bool getLocalTime(struct tm* info, uint32_t ms = 5000) {
     return true;
 }
 void sntp_set_time_sync_notification_cb(sntp_sync_time_cb_t callback) {}
+void esp_sntp_stop() {}
 
 // Forward declarations for functions in WatchTower.ino that are used before definition
 // (None needed as they are in WatchTower.ino now)

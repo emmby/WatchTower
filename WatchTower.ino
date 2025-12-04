@@ -28,6 +28,7 @@
 #include <ArduinoMDNS.h>
 #include <time.h>
 #include <esp_sntp.h>
+#include <Preferences.h>
 #include "customJS.h"
 #include "include/RadioTimeSignal.h"
 #include "include/WWVBSignal.h"
@@ -52,15 +53,11 @@ const char *timezone = "PST8PDT,M3.2.0,M11.1.0"; // America/Los_Angeles
 
 
 // Default to WWVB if no signal is specified
-#if defined(SIGNAL_DCF77)
-RadioTimeSignal* signalGenerator = new DCF77Signal();
-#elif defined(SIGNAL_MSF)
-RadioTimeSignal* signalGenerator = new MSFSignal();
-#elif defined(SIGNAL_JJY)
-RadioTimeSignal* signalGenerator = new JJYSignal();
-#else
-RadioTimeSignal* signalGenerator = new WWVBSignal();
-#endif
+WWVBSignal wwvb;
+DCF77Signal dcf77;
+MSFSignal msf;
+JJYSignal jjy;
+RadioTimeSignal* signalGenerator = &wwvb;
 
 const char* const ntpServer = "pool.ntp.org";
 
@@ -80,9 +77,11 @@ const uint32_t COLOR_TRANSMIT = pixel ? pixel->Color(32, 0, 0) : 0; // dim red h
 WiFiManager wifiManager;
 WiFiUDP udp;
 MDNS mdns(udp);
+Preferences preferences;
 bool logicValue = 0; // TODO rename
-struct timeval lastSync;
+unsigned long lastSync = 0;
 TimeCodeSymbol broadcast[60];
+bool networkSyncEnabled = true;
 
 // ESPUI Interface IDs
 uint16_t ui_time;
@@ -91,11 +90,53 @@ uint16_t ui_timezone;
 uint16_t ui_broadcast;
 uint16_t ui_uptime;
 uint16_t ui_last_sync;
+uint16_t ui_network_sync_switch;
+uint16_t ui_manual_date;
+uint16_t ui_manual_time;
+uint16_t ui_signal_select;
+
+String manualDate = "";
+String manualTime = "";
+
+void updateManualTimeCallback(Control *sender, int value) {
+    if (sender->id == ui_manual_date) {
+        manualDate = sender->value;
+    } else if (sender->id == ui_manual_time) {
+        manualTime = sender->value;
+    }
+
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    struct tm tm;
+    localtime_r(&now.tv_sec, &tm);
+
+    if (manualDate.length() > 0) {
+        // Parse YYYY-MM-DD
+        strptime(manualDate.c_str(), "%Y-%m-%d", &tm);
+    }
+    
+    if (manualTime.length() > 0) {
+        // Parse HH:MM
+        strptime(manualTime.c_str(), "%H:%M", &tm);
+        tm.tm_sec = 0; // Reset seconds when setting time
+    }
+
+    tm.tm_isdst = -1; // Let mktime determine DST
+    time_t t = mktime(&tm);
+    
+    if (t != -1) {
+        struct timeval tv = { .tv_sec = t, .tv_usec = 0 };
+        settimeofday(&tv, NULL);
+        Serial.println("Manual time updated");
+    } else {
+        Serial.println("Failed to set manual time");
+    }
+}
 
 // A callback that tracks when we last sync'ed the
 // time with the ntp server
 void time_sync_notification_cb(struct timeval *tv) {
-  lastSync = *tv;
+  lastSync = millis();
 }
 
 // A callback that is called when the device
@@ -116,6 +157,52 @@ void clearBroadcastValues() {
         broadcast[i] = (TimeCodeSymbol)-1; // -1 isn't legal but that's okay, we just need an invalid value
     }
 }
+
+void updateSignalCallback(Control *sender, int value) {
+    if (sender->id == ui_signal_select) {
+        String selected = sender->value;
+        if (selected == "WWVB") {
+            signalGenerator = &wwvb;
+        } else if (selected == "DCF77") {
+            signalGenerator = &dcf77;
+        } else if (selected == "MSF") {
+            signalGenerator = &msf;
+        } else if (selected == "JJY") {
+            signalGenerator = &jjy;
+        }
+        
+        preferences.putString("signal", signalGenerator->getName());
+        Serial.println("Signal changed to: " + signalGenerator->getName());
+        
+        // Update PWM frequency
+        ledcAttach(PIN_ANTENNA, signalGenerator->getFrequency(), 8);
+    }
+}
+
+// Callback for when the network sync switch is toggled
+void updateSyncCallback(Control *sender, int value) {
+  if (sender->id == ui_network_sync_switch) {
+    networkSyncEnabled = (value == S_ACTIVE);
+    preferences.putBool("net_sync", networkSyncEnabled);
+    Serial.printf("Network Sync changed to: %s\n", networkSyncEnabled ? "ENABLED" : "DISABLED");
+    
+    if (networkSyncEnabled) {
+        // Re-enable sync
+        esp_sntp_stop();
+        configTzTime(timezone, ntpServer);
+        Serial.println("NTP Sync re-enabled");
+        ESPUI.updateVisibility(ui_manual_date, false);
+        ESPUI.updateVisibility(ui_manual_time, false);
+    } else {
+        // Disable sync
+        esp_sntp_stop(); 
+        Serial.println("NTP Sync disabled");
+        ESPUI.updateVisibility(ui_manual_date, true);
+        ESPUI.updateVisibility(ui_manual_time, true);
+    }
+  }
+}
+
 
 void setup() {
   Serial.begin(115200);
@@ -141,6 +228,14 @@ void setup() {
   wifiManager.setAPCallback(accesspointCallback);
   wifiManager.autoConnect("WatchTower");
 
+  preferences.begin("watchtower", false);
+  networkSyncEnabled = preferences.getBool("net_sync", true);
+  String savedSignal = preferences.getString("signal", "WWVB");
+  if (savedSignal == "DCF77") signalGenerator = &dcf77;
+  else if (savedSignal == "MSF") signalGenerator = &msf;
+  else if (savedSignal == "JJY") signalGenerator = &jjy;
+  else signalGenerator = &wwvb;
+
   clearBroadcastValues();
 
   // --- ESPUI SETUP ---
@@ -153,6 +248,28 @@ void setup() {
   ui_timezone = ESPUI.label("Timezone", ControlColor::Peterriver, timezone);
   ui_uptime = ESPUI.label("System Uptime", ControlColor::Carrot, "0s");
   ui_last_sync = ESPUI.label("Last NTP Sync", ControlColor::Alizarin, "Pending...");
+  ui_network_sync_switch = ESPUI.switcher("Network time sync", updateSyncCallback, ControlColor::Sunflower, networkSyncEnabled);
+  
+  ui_manual_date = ESPUI.text("Manual Date", updateManualTimeCallback, ControlColor::Dark, "");
+  ESPUI.setInputType(ui_manual_date, "date");
+  ESPUI.updateVisibility(ui_manual_date, !networkSyncEnabled);
+
+  ui_manual_time = ESPUI.text("Manual Time", updateManualTimeCallback, ControlColor::Dark, "");
+  ESPUI.setInputType(ui_manual_time, "time");
+  ESPUI.updateVisibility(ui_manual_time, !networkSyncEnabled);
+
+  ui_signal_select = ESPUI.addControl(ControlType::Select, "Signal Protocol", "", ControlColor::Turquoise, Control::noParent, updateSignalCallback);
+  ESPUI.addControl(ControlType::Option, "WWVB", "WWVB", ControlColor::Alizarin, ui_signal_select);
+  ESPUI.addControl(ControlType::Option, "DCF77", "DCF77", ControlColor::Alizarin, ui_signal_select);
+  ESPUI.addControl(ControlType::Option, "MSF", "MSF", ControlColor::Alizarin, ui_signal_select);
+  ESPUI.addControl(ControlType::Option, "JJY", "JJY", ControlColor::Alizarin, ui_signal_select);
+  
+  // Set initial selection
+  if (signalGenerator == &wwvb) ESPUI.updateSelect(ui_signal_select, "WWVB");
+  else if (signalGenerator == &dcf77) ESPUI.updateSelect(ui_signal_select, "DCF77");
+  else if (signalGenerator == &msf) ESPUI.updateSelect(ui_signal_select, "MSF");
+  else if (signalGenerator == &jjy) ESPUI.updateSelect(ui_signal_select, "JJY");
+
 
   ESPUI.setPanelWide(ui_broadcast, true);
   ESPUI.setElementStyle(ui_broadcast, "font-family: monospace");
@@ -170,19 +287,33 @@ void setup() {
   // Connect to network time server
   // By default, it will resync every few hours
   sntp_set_time_sync_notification_cb(time_sync_notification_cb);
-  configTzTime(timezone, ntpServer);
+  
+  if (networkSyncEnabled) {
+      configTzTime(timezone, ntpServer);
+  } else {
+      // When network sync is disabled, we still need to configure the timezone
+      // so that localtime() works correctly.
+      setenv("TZ", timezone, 1);
+      tzset();
+  }
   
   struct tm timeinfo;
-  if(!getLocalTime(&timeinfo)){
-    Serial.println("Failed to obtain time");
-    if( pixel ) {
-        pixel->setPixelColor(0, COLOR_ERROR );
-        pixel->show();
+  // Only block on time if sync is enabled
+  if (networkSyncEnabled) {
+    if (getLocalTime(&timeinfo)) {
+      Serial.println("Got the time from NTP");
+    } else {
+      Serial.println("Failed to obtain time");
+      if( pixel ) {
+          pixel->setPixelColor(0, COLOR_ERROR );
+          pixel->show();
+      }
+      delay(3000);
+      ESP.restart();
     }
-    delay(3000);
-    ESP.restart();
+  } else {
+      Serial.println("Network sync disabled, skipping initial time check.");
   }
-  Serial.println("Got the time from NTP");
 
   // Start the carrier signal using 8-bit (0-255) resolution
   ledcAttach(PIN_ANTENNA, signalGenerator->getFrequency(), 8);
@@ -266,9 +397,12 @@ void loop() {
     sprintf(timeStringBuff2,"%s.%03d%s", timeStringBuff, now.tv_usec/1000, timeStringBuff3 ); // time+millis+tz
 
     char lastSyncStringBuff[100]; // Buffer to hold the formatted time string
-    struct tm buf_lastSync;
-    localtime_r(&lastSync.tv_sec, &buf_lastSync);
-    strftime(lastSyncStringBuff, sizeof(lastSyncStringBuff), "%b %d %H:%M", &buf_lastSync);
+    if (lastSync == 0) {
+        snprintf(lastSyncStringBuff, sizeof(lastSyncStringBuff), "Never");
+    } else {
+        unsigned long secondsSinceSync = (millis() - lastSync) / 1000;
+        snprintf(lastSyncStringBuff, sizeof(lastSyncStringBuff), "%lus ago", secondsSinceSync);
+    }
     Serial.printf("%s [last sync %s]: %s\n",timeStringBuff2, lastSyncStringBuff, logicValue ? "1" : "0");
 
     static int prevSecond = -1;
@@ -319,12 +453,18 @@ void loop() {
         ESPUI.print(ui_uptime, buf);
 
         // Last Sync
-        strftime(buf, sizeof(buf), "%b %d %H:%M", &buf_lastSync);
-        ESPUI.print(ui_last_sync, buf);
+        if (lastSync == 0) {
+            ESPUI.print(ui_last_sync, "Never");
+        } else {
+            unsigned long secondsSinceSync = (millis() - lastSync) / 1000;
+            snprintf(buf, sizeof(buf), "%lus ago", secondsSinceSync);
+            ESPUI.print(ui_last_sync, buf);
+        }
     }
 
     // Check for stale sync (24 hours)
-    if( now.tv_sec - lastSync.tv_sec > 60 * 60 * 24 ) {
+    // Only restart if it's past 12pm local time to avoid rebooting while a device is syncing
+    if( networkSyncEnabled && (millis() - lastSync > 24 * 60 * 60 * 1000) && buf_now_local.tm_hour >= 12 ) {
       Serial.println("Last sync more than 24 hours ago, rebooting.");
       if( pixel ) {
         pixel->setPixelColor(0, COLOR_ERROR );
