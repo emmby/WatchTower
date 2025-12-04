@@ -82,17 +82,6 @@ public:
 private:
     TimeCodeSymbol frameBits_[60];
 
-    // Helper to encode BCD with a 0 bit inserted between digits (for WWVB)
-    // Tens digit occupies 3 bits (bits 7,6,5 of the byte? No, just 3 bits).
-    // Units digit occupies 4 bits.
-    // Structure: [Tens:3] [0] [Units:4]
-    uint64_t to_padded5_bcd(int n) {
-        return (((n / 100) % 10) << 10) | (((n / 10) % 10) << 5) | (n % 10);
-    }
-
-    bool is_leap_year(int year) {
-        return year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-    }
 };
 
 #endif // WWVB_SIGNAL_H

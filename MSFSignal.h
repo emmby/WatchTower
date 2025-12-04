@@ -10,29 +10,65 @@ public:
     }
 
     void encodeMinute(const struct tm& timeinfo, int today_start_isdst, int tomorrow_start_isdst) override {
-        encodeFrame(timeinfo, today_start_isdst, tomorrow_start_isdst);
+        // MSF sends the UPCOMING minute.
+        struct tm breakdown = timeinfo;
+        breakdown.tm_min += 1;
+        mktime(&breakdown); // Normalize
+        
+        uint64_t aBits = 0b1111110; // Bits 53-59 (Marker)
+        
+        aBits |= to_bcd(breakdown.tm_year % 100) << (59 - 24);
+        aBits |= to_bcd(breakdown.tm_mon + 1) << (59 - 29);
+        aBits |= to_bcd(breakdown.tm_mday) << (59 - 35);
+        aBits |= to_bcd(breakdown.tm_wday) << (59 - 38);
+        aBits |= to_bcd(breakdown.tm_hour) << (59 - 44);
+        aBits |= to_bcd(breakdown.tm_min) << (59 - 51);
+        
+        uint64_t bBits = 0;
+        // DUT1 (1-16) - 0
+        // Summer time warning (53) - 0
+        
+        // Year parity (17-24)
+        if (countSetBits(aBits, 59 - 24, 59 - 17) % 2 == 0) {
+            bBits |= 1ULL << (59 - 54);
+        }
+        // Day parity (25-35)
+        if (countSetBits(aBits, 59 - 35, 59 - 25) % 2 == 0) {
+            bBits |= 1ULL << (59 - 55);
+        }
+        // Weekday parity (36-38)
+        if (countSetBits(aBits, 59 - 38, 59 - 36) % 2 == 0) {
+            bBits |= 1ULL << (59 - 56);
+        }
+        // Time parity (39-51)
+        if (countSetBits(aBits, 59 - 51, 59 - 39) % 2 == 0) {
+            bBits |= 1ULL << (59 - 57);
+        }
+        
+        // DST (58)
+        if (breakdown.tm_isdst) {
+            bBits |= 1ULL << (59 - 58);
+        }
+
+        // Populate array
+        for (int i = 0; i < 60; i++) {
+            if (i == 0) {
+                frameBits_[i] = TimeCodeSymbol::MARK;
+            } else {
+                bool a = (aBits >> (59 - i)) & 1;
+                bool b = (bBits >> (59 - i)) & 1;
+                
+                if (!a && !b) frameBits_[i] = TimeCodeSymbol::ZERO;
+                else if (a && !b) frameBits_[i] = TimeCodeSymbol::ONE;
+                else if (!a && b) frameBits_[i] = TimeCodeSymbol::MSF_01;
+                else if (a && b) frameBits_[i] = TimeCodeSymbol::MSF_11;
+            }
+        }
     }
 
     TimeCodeSymbol getSymbolForSecond(int second) override {
         if (second < 0 || second > 59) return TimeCodeSymbol::ZERO;
-
-        if (second == 0) return TimeCodeSymbol::MARK;
-
-        bool a = (aBits_ >> (59 - second)) & 1;
-        bool b = (bBits_ >> (59 - second)) & 1;
-
-        // Encode TimeCodeSymbol based on A and B
-        // 00 -> ZERO
-        // 10 -> ONE
-        // 01 -> MSF_01
-        // 11 -> MSF_11
-        
-        if (!a && !b) return TimeCodeSymbol::ZERO;
-        if (a && !b) return TimeCodeSymbol::ONE;
-        if (!a && b) return TimeCodeSymbol::MSF_01;
-        if (a && b) return TimeCodeSymbol::MSF_11;
-        
-        return TimeCodeSymbol::ZERO;
+        return frameBits_[second];
     }
 
     bool getSignalLevel(TimeCodeSymbol symbol, int millis) override {
@@ -57,53 +93,11 @@ public:
     }
 
 private:
-    uint64_t aBits_ = 0;
-    uint64_t bBits_ = 0;
+    TimeCodeSymbol frameBits_[60];
     int lastEncodedMinute_ = -1;
 
-    uint64_t to_bcd(int n) {
-        return (((n / 10) % 10) << 4) | (n % 10);
-    }
-
-    // Returns 1 if we need to add a bit to make parity odd (i.e. if current count is even)
-    uint64_t odd_parity(uint64_t d, int from, int to_including) {
-        int result = 0;
-        for (int bit = from; bit <= to_including; ++bit) {
-            if (d & (1ULL << bit)) result++;
-        }
-        return (result & 0x1) == 0;
-    }
-
     void encodeFrame(const struct tm& timeinfo, int today_start_isdst, int tomorrow_start_isdst) {
-        // MSF sends the UPCOMING minute.
-        // We assume timeinfo is the current time, so we encode the next minute.
-        
-        struct tm breakdown = timeinfo;
-        breakdown.tm_min += 1;
-        mktime(&breakdown); // Normalize
-        
-        aBits_ = 0b1111110; // Bits 53-59 (Marker)
-        
-        aBits_ |= to_bcd(breakdown.tm_year % 100) << (59 - 24);
-        aBits_ |= to_bcd(breakdown.tm_mon + 1) << (59 - 29);
-        aBits_ |= to_bcd(breakdown.tm_mday) << (59 - 35);
-        aBits_ |= to_bcd(breakdown.tm_wday) << (59 - 38);
-        aBits_ |= to_bcd(breakdown.tm_hour) << (59 - 44);
-        aBits_ |= to_bcd(breakdown.tm_min) << (59 - 51);
-        
-        bBits_ = 0;
-        // DUT1 (1-16) - 0
-        // Summer time warning (53) - 0
-        
-        bBits_ |= odd_parity(aBits_, 59 - 24, 59 - 17) << (59 - 54); // Year parity
-        bBits_ |= odd_parity(aBits_, 59 - 35, 59 - 25) << (59 - 55); // Day parity
-        bBits_ |= odd_parity(aBits_, 59 - 38, 59 - 36) << (59 - 56); // Weekday parity
-        bBits_ |= odd_parity(aBits_, 59 - 51, 59 - 39) << (59 - 57); // Time parity
-        
-        // DST (58)
-        if (breakdown.tm_isdst) {
-            bBits_ |= 1ULL << (59 - 58);
-        }
+        // Deprecated/Removed. Logic moved to encodeMinute.
     }
 };
 
