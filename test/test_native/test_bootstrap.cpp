@@ -119,10 +119,10 @@ void test_wifi_connection_attempt(void) {
 
 void test_serial_date_output(void) {
     // Arrange
-    // Set time to 2025-12-25 12:00:00 UTC
-    // 1766664000
-    mock_tv.tv_sec = 1766664000; 
-    mock_tv.tv_usec = 900000; // 900ms to ensure logicValue=1 (MARK/ONE/ZERO all high at 900ms? No wait)
+    // Set time to 2025-12-25 12:00:01 UTC (Second 1 is usually ZERO, which is High at 500ms for all signals)
+    // 1766664001
+    mock_tv.tv_sec = 1766664001; 
+    mock_tv.tv_usec = 500000; // 500ms
     // ZERO: low 200ms, high 800ms. So at 900ms (0.9s), it is HIGH (Wait, "low 200ms, high 800ms" usually means low FOR 200ms, then high FOR 800ms? Or low UNTIL 200ms?)
     // WatchTower.ino:
     // if (bit == WWVB_T::ZERO) return millis >= 200;
