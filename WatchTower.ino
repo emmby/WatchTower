@@ -111,10 +111,6 @@ static inline short dutyCycle(bool logicValue) {
   return logicValue ? (256*0.5) : 0; // 128 == 50% duty cycle
 }
 
-static inline int is_leap_year(int year) {
-    return (year % 4 == 0) && (year % 100 != 0 || year % 400 == 0);
-}
-
 void clearBroadcastValues() {
     for(int i=0; i<sizeof(broadcast)/sizeof(broadcast[0]); ++i) {
         broadcast[i] = (TimeCodeSymbol)-1; // -1 isn't legal but that's okay, we just need an invalid value
