@@ -337,8 +337,12 @@ void loop() {
     sprintf(timeStringBuff2,"%s.%03d%s", timeStringBuff, now.tv_usec/1000, timeStringBuff3 ); // time+millis+tz
 
     char lastSyncStringBuff[100]; // Buffer to hold the formatted time string
-    unsigned long secondsSinceSync = (millis() - lastSync) / 1000;
-    snprintf(lastSyncStringBuff, sizeof(lastSyncStringBuff), "%lus ago", secondsSinceSync);
+    if (lastSync == 0) {
+        snprintf(lastSyncStringBuff, sizeof(lastSyncStringBuff), "Never");
+    } else {
+        unsigned long secondsSinceSync = (millis() - lastSync) / 1000;
+        snprintf(lastSyncStringBuff, sizeof(lastSyncStringBuff), "%lus ago", secondsSinceSync);
+    }
     Serial.printf("%s [last sync %s]: %s\n",timeStringBuff2, lastSyncStringBuff, logicValue ? "1" : "0");
 
     static int prevSecond = -1;
@@ -386,9 +390,13 @@ void loop() {
         ESPUI.print(ui_uptime, buf);
 
         // Last Sync
-        unsigned long secondsSinceSync = (millis() - lastSync) / 1000;
-        snprintf(buf, sizeof(buf), "%lus ago", secondsSinceSync);
-        ESPUI.print(ui_last_sync, buf);
+        if (lastSync == 0) {
+            ESPUI.print(ui_last_sync, "Never");
+        } else {
+            unsigned long secondsSinceSync = (millis() - lastSync) / 1000;
+            snprintf(buf, sizeof(buf), "%lus ago", secondsSinceSync);
+            ESPUI.print(ui_last_sync, buf);
+        }
     }
 
     // Check for stale sync (24 hours)
