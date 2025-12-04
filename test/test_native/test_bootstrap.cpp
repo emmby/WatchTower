@@ -36,6 +36,12 @@ int mock_gettimeofday(struct timeval *tv, void *tz) {
 }
 #define gettimeofday mock_gettimeofday
 
+int mock_settimeofday(const struct timeval *tv, const struct timezone *tz) {
+    if (tv) mock_tv = *tv;
+    return 0;
+}
+#define settimeofday mock_settimeofday
+
 // Mock Serial to support printf
 class SerialMock {
 public:

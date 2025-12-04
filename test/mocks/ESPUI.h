@@ -2,11 +2,12 @@
 #include <Arduino.h>
 
 enum Verbosity { Quiet };
-enum ControlColor { Sunflower, Turquoise, Emerald, Peterriver, Carrot, Alizarin };
+enum ControlColor { Sunflower, Turquoise, Emerald, Peterriver, Carrot, Alizarin, Dark };
 
 struct Control {
     uint16_t id;
     void* ptr;
+    String value; // Added value
 };
 
 #define S_ACTIVE -7
@@ -23,10 +24,15 @@ public:
     
     // Mock switcher
     uint16_t switcher(const char* label, void (*callback)(Control*, int), ControlColor color, bool startState = false) { return 0; }
-    // Overload for when callback is passed differently or arguments order differs?
-    // In WatchTower.ino: ESPUI.switcher("Network Sync", updateSyncCallback, ControlColor::Sunflower, networkSyncEnabled);
-    // Signature: (const char*, void(*)(Control*, int), ControlColor, bool)
-    // This matches what I wrote above.
+    
+    // Mock text
+    uint16_t text(const char* label, void (*callback)(Control*, int), ControlColor color, const char* value) { return 0; }
+    
+    // Mock updateVisibility
+    void updateVisibility(uint16_t id, bool visible) {}
+
+    // Mock setInputType
+    void setInputType(uint16_t id, const char* type) {}
 };
 
 extern ESPUIClass ESPUI;

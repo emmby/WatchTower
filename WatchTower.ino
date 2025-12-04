@@ -83,6 +83,37 @@ uint16_t ui_broadcast;
 uint16_t ui_uptime;
 uint16_t ui_last_sync;
 uint16_t ui_network_sync_switch;
+uint16_t ui_manual_date;
+uint16_t ui_manual_time;
+
+String manualDate = "";
+String manualTime = "";
+
+void updateManualTimeCallback(Control *sender, int value) {
+    if (sender->id == ui_manual_date) {
+        manualDate = sender->value;
+    } else if (sender->id == ui_manual_time) {
+        manualTime = sender->value;
+    }
+
+    if (manualDate.length() > 0 && manualTime.length() > 0) {
+        String dateTime = manualDate + " " + manualTime;
+        struct tm tm;
+        // Expected format from date/time inputs: YYYY-MM-DD and HH:MM
+        // But browser date input might be YYYY-MM-DD, time might be HH:MM
+        // Let's assume standard ISO format which these inputs usually return.
+        // strptime format: "%Y-%m-%d %H:%M"
+        if (strptime(dateTime.c_str(), "%Y-%m-%d %H:%M", &tm)) {
+            tm.tm_sec = 0; // Reset seconds
+            time_t t = mktime(&tm);
+            struct timeval tv = { .tv_sec = t, .tv_usec = 0 };
+            settimeofday(&tv, NULL);
+            Serial.println("Manual time set: " + dateTime);
+        } else {
+            Serial.println("Invalid date/time format: " + dateTime);
+        }
+    }
+}
 
 // A callback that tracks when we last sync'ed the
 // time with the ntp server
@@ -125,10 +156,14 @@ void updateSyncCallback(Control *sender, int value) {
         esp_sntp_stop();
         configTzTime(timezone, ntpServer);
         Serial.println("NTP Sync re-enabled");
+        ESPUI.updateVisibility(ui_manual_date, false);
+        ESPUI.updateVisibility(ui_manual_time, false);
     } else {
         // Disable sync
         esp_sntp_stop(); 
         Serial.println("NTP Sync disabled");
+        ESPUI.updateVisibility(ui_manual_date, true);
+        ESPUI.updateVisibility(ui_manual_time, true);
     }
   }
 }
@@ -173,7 +208,15 @@ void setup() {
   ui_timezone = ESPUI.label("Timezone", ControlColor::Peterriver, timezone);
   ui_uptime = ESPUI.label("System Uptime", ControlColor::Carrot, "0s");
   ui_last_sync = ESPUI.label("Last NTP Sync", ControlColor::Alizarin, "Pending...");
-  ui_network_sync_switch = ESPUI.switcher("Network Sync", updateSyncCallback, ControlColor::Sunflower, networkSyncEnabled);
+  ui_network_sync_switch = ESPUI.switcher("Network time sync", updateSyncCallback, ControlColor::Sunflower, networkSyncEnabled);
+  
+  ui_manual_date = ESPUI.text("Manual Date", updateManualTimeCallback, ControlColor::Dark, "");
+  ESPUI.setInputType(ui_manual_date, "date");
+  ESPUI.updateVisibility(ui_manual_date, !networkSyncEnabled);
+
+  ui_manual_time = ESPUI.text("Manual Time", updateManualTimeCallback, ControlColor::Dark, "");
+  ESPUI.setInputType(ui_manual_time, "time");
+  ESPUI.updateVisibility(ui_manual_time, !networkSyncEnabled);
 
 
   ESPUI.setPanelWide(ui_broadcast, true);
