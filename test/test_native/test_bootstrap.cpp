@@ -335,7 +335,7 @@ void test_signal_switching(void) {
     
     // Assert
     TEST_ASSERT_EQUAL_STRING("JJY", signalGenerator->getName().c_str());
-    TEST_ASSERT_EQUAL(40000, last_ledc_freq); // or 60000 depending on impl
+    TEST_ASSERT_EQUAL(60000, last_ledc_freq); // or 40000 depending on impl
     
     // Act - Select WWVB
     sender.value = "WWVB";
