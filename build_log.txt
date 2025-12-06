@@ -1,0 +1,43 @@
+Collected 1 tests (test_native)
+
+Processing test_native in native environment
+--------------------------------------------------------------------------------
+Building...
+LDF: Library Dependency Finder -> https://bit.ly/configure-pio-ldf
+LDF Modes: Finder ~ chain, Compatibility ~ soft
+Found 1 compatible libraries
+Scanning dependencies...
+Dependency Graph
+|-- Unity @ 2.6.0 (License: MIT, Path: /Users/mike/Arduino/WatchTower/.pio/libdeps/native/Unity)
+Building in test mode
+g++ -o .pio/build/native/test/test_native/test_bootstrap.o -c -DPLATFORMIO=60118 -DUNIT_TEST -DPIO_UNIT_TESTING -DUNIT_TEST -DUNITY_INCLUDE_CONFIG_H -I. -I.pio/libdeps/native/Unity/src -I.pio/build/native/unity_config -I.pio/build/native/unity_config -Itest/test_native -Itest -Itest/mocks test/test_native/test_bootstrap.cpp
+In file included from test/test_native/test_bootstrap.cpp:82:
+test/test_native/../../WatchTower.ino:259:5: warning: 'sprintf' is deprecated: This function is provided for compatibility reasons only.  Due to security concerns inherent in the design of sprintf(3), it is highly recommended that you use snprintf(3) instead. [-Wdeprecated-declarations]
+  259 |     sprintf(timeStringBuff2,"%s.%03d%s", timeStringBuff, now.tv_usec/1000, timeStringBuff3 ); // time+millis+tz
+      |     ^
+/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/_stdio.h:278:1: note: 'sprintf' has been explicitly marked deprecated here
+  278 | __deprecated_msg("This function is provided for compatibility reasons only.  Due to security concerns inherent in the design of sprintf(3), it is highly recommended that you use snprintf(3) instead.")
+      | ^
+/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/sys/cdefs.h:227:48: note: expanded from macro '__deprecated_msg'
+  227 |         #define __deprecated_msg(_msg) __attribute__((__deprecated__(_msg)))
+      |                                                       ^
+test/test_native/test_bootstrap.cpp:224:33: error: function definition is not allowed here
+  224 | int main(int argc, char **argv) {
+      |                                 ^
+test/test_native/test_bootstrap.cpp:233:2: error: expected '}'
+  233 | }
+      |  ^
+test/test_native/test_bootstrap.cpp:173:37: note: to match this '{'
+  173 | void test_wwvb_frame_encoding(void) {
+      |                                     ^
+1 warning and 2 errors generated.
+*** [.pio/build/native/test/test_native/test_bootstrap.o] Error 1
+Building stage has failed, see errors above. Use `pio test -vvv` option to enable verbose output.
+---------------- native:test_native [ERRORED] Took 0.45 seconds ----------------
+
+=================================== SUMMARY ===================================
+Environment          Test         Status    Duration
+-------------------  -----------  --------  ------------
+adafruit_qtpy_esp32  test_native  SKIPPED
+native               test_native  ERRORED   00:00:00.454
+================== 1 test cases: 0 succeeded in 00:00:00.454 ==================

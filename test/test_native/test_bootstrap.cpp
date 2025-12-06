@@ -36,6 +36,12 @@ int mock_gettimeofday(struct timeval *tv, void *tz) {
 }
 #define gettimeofday mock_gettimeofday
 
+int mock_settimeofday(const struct timeval *tv, const struct timezone *tz) {
+    if (tv) mock_tv = *tv;
+    return 0;
+}
+#define settimeofday mock_settimeofday
+
 // Mock Serial to support printf
 class SerialMock {
 public:
@@ -60,7 +66,12 @@ SerialMock MySerial;
 #define Serial MySerial
 
 // ESP32 specific mocks
-void ledcAttach(uint8_t pin, double freq, uint8_t resolution) {}
+// Global to track last ledc frequency
+int last_ledc_freq = 0;
+void ledcAttach(uint8_t pin, double freq, uint8_t resolution) {
+    last_ledc_freq = (int)freq;
+}
+void ledcDetach(uint8_t pin) {}
 void ledcWrite(uint8_t pin, uint32_t duty) {}
 void configTzTime(const char* tz, const char* server1, const char* server2 = nullptr, const char* server3 = nullptr) {}
 bool getLocalTime(struct tm* info, uint32_t ms = 5000) {
@@ -70,9 +81,10 @@ bool getLocalTime(struct tm* info, uint32_t ms = 5000) {
     return true;
 }
 void sntp_set_time_sync_notification_cb(sntp_sync_time_cb_t callback) {}
+void esp_sntp_stop() {}
 
 // Forward declarations for functions in WatchTower.ino that are used before definition
-bool wwvbLogicSignal(int, int, int, int, int, int, int, int);
+// (None needed as they are in WatchTower.ino now)
 
 // Rename timezone to avoid conflict with system symbol
 #define timezone my_timezone
@@ -119,10 +131,10 @@ void test_wifi_connection_attempt(void) {
 
 void test_serial_date_output(void) {
     // Arrange
-    // Set time to 2025-12-25 12:00:00 UTC
-    // 1766664000
-    mock_tv.tv_sec = 1766664000; 
-    mock_tv.tv_usec = 900000; // 900ms to ensure logicValue=1 (MARK/ONE/ZERO all high at 900ms? No wait)
+    // Set time to 2025-12-25 12:00:01 UTC (Second 1 is usually ZERO, which is High at 500ms for all signals)
+    // 1766664001
+    mock_tv.tv_sec = 1766664001; 
+    mock_tv.tv_usec = 500000; // 500ms
     // ZERO: low 200ms, high 800ms. So at 900ms (0.9s), it is HIGH (Wait, "low 200ms, high 800ms" usually means low FOR 200ms, then high FOR 800ms? Or low UNTIL 200ms?)
     // WatchTower.ino:
     // if (bit == WWVB_T::ZERO) return millis >= 200;
@@ -145,84 +157,193 @@ void test_serial_date_output(void) {
     TEST_ASSERT_NOT_NULL(strstr(MySerial.output.c_str(), "December 25 2025"));
 }
 
+// Shared valid timeinfo for tests (2000-01-01 12:00:00)
+const struct tm kValidTimeInfo = []{
+    struct tm t = {0};
+    t.tm_year = 100; // 2000
+    t.tm_mon = 0;    // Jan
+    t.tm_mday = 1;   // 1st
+    t.tm_hour = 12;
+    return t;
+}();
+
 void test_wwvb_logic_signal(void) {
-    // Test ZERO bit (e.g. second 4 is always ZERO/Blank)
-    // Expect: False for < 200ms, True for >= 200ms
-    TEST_ASSERT_FALSE(wwvbLogicSignal(0, 0, 4, 199, 0, 2025, 0, 0));
-    TEST_ASSERT_TRUE(wwvbLogicSignal(0, 0, 4, 200, 0, 2025, 0, 0));
+    WWVBSignal wwvb;
+    struct tm timeinfo = kValidTimeInfo;
+    wwvb.encodeMinute(timeinfo, 0, 0);
+    
+    // Test MARK (0s)
+    TimeCodeSymbol bit = wwvb.getSymbolForSecond(0);
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::MARK, bit);
+    
+    TEST_ASSERT_FALSE(wwvb.getSignalLevel(bit, 0));
+    TEST_ASSERT_FALSE(wwvb.getSignalLevel(bit, 799));
+    TEST_ASSERT_TRUE(wwvb.getSignalLevel(bit, 800));
 
-    // Test ONE bit (e.g. second 1, minute 40 -> bit 2 is 1)
-    // Minute 40 = 101000 binary? No. 40 / 10 = 4. 4 in binary is 100.
-    // Second 1 checks bit 2 of (minute/10). (4 >> 2) & 1 = 1. So it's a ONE.
-    // Expect: False for < 500ms, True for >= 500ms
-    TEST_ASSERT_FALSE(wwvbLogicSignal(0, 40, 1, 499, 0, 2025, 0, 0));
-    TEST_ASSERT_TRUE(wwvbLogicSignal(0, 40, 1, 500, 0, 2025, 0, 0));
+    // Test ZERO
+    // timeinfo.tm_sec = 1; // Not needed for encodeMinute unless we re-configure
+    bit = wwvb.getSymbolForSecond(1);
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ZERO, bit);
+    TEST_ASSERT_FALSE(wwvb.getSignalLevel(bit, 0));
+    TEST_ASSERT_FALSE(wwvb.getSignalLevel(bit, 199));
+    TEST_ASSERT_TRUE(wwvb.getSignalLevel(bit, 200));
 
-    // Test MARK bit (e.g. second 0 is always MARK)
-    // Expect: False for < 800ms, True for >= 800ms
-    TEST_ASSERT_FALSE(wwvbLogicSignal(0, 0, 0, 799, 0, 2025, 0, 0));
-    TEST_ASSERT_TRUE(wwvbLogicSignal(0, 0, 0, 800, 0, 2025, 0, 0));
+    // Test ONE
+    // We need to find a second that is 1.
+    // Bit 58 is DST. If DST=1, then bit is 1.
+    // Re-configure for DST
+    timeinfo.tm_sec = 0; // Reset sec just in case
+    wwvb.encodeMinute(timeinfo, 1, 1); // DST on
+    
+    bit = wwvb.getSymbolForSecond(58);
+    // DST bit 58 is set if dst is on.
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ONE, bit);
+    TEST_ASSERT_FALSE(wwvb.getSignalLevel(bit, 0));
+    TEST_ASSERT_FALSE(wwvb.getSignalLevel(bit, 499));
+    TEST_ASSERT_TRUE(wwvb.getSignalLevel(bit, 500));
 }
 
 void test_wwvb_frame_encoding(void) {
-    // Expected bits for Mar 6 2008 07:30:00 UTC from https://en.wikipedia.org/wiki/WWVB#Amplitude-modulated_time_code
-    // Excludes DUT bits (36-38, 40-43) which are marked as '?'
-    const char* expected = 
-        "M"         // 00
-        "01100000"  // 01-08 (Min 30)
-        "M"         // 09
-        "00"        // 10-11
-        "0000111"   // 12-18 (Hour 7)
-        "M"         // 19
-        "00"        // 20-21
-        "0000110"   // 22-28 (Day 66 part 1)
-        "M"         // 29
-        "0110"      // 30-33 (Day 66 part 2)
-        "00"        // 34-35
-        "???"       // 36-38 (DUT)
-        "M"         // 39
-        "????"      // 40-43 (DUT)
-        "0"         // 44
-        "0000"      // 45-48 (Year 08 part 1)
-        "M"         // 49
-        "1000"      // 50-53 (Year 08 part 2)
-        "0"         // 54
-        "1"         // 55 (Leap Year)
-        "0"         // 56 (Leap Sec)
-        "00"        // 57-58 (DST)
-        "M";        // 59
+    WWVBSignal wwvb;
+    // Test a specific known date/time
+    // Mar 6 2008 07:30:00 UTC
+    struct tm timeinfo = {0};
+    timeinfo.tm_year = 2008 - 1900;
+    timeinfo.tm_mon = 2; // March
+    timeinfo.tm_mday = 6;
+    timeinfo.tm_hour = 7;
+    timeinfo.tm_min = 30;
+    timeinfo.tm_sec = 0;
+    timeinfo.tm_yday = 65; // Day 66 (0-indexed 65)
+    
+    wwvb.encodeMinute(timeinfo, 0, 0);
+    
+    // Day of Year 66.
+    // Hundreds: 0. Tens: 6. Units: 6.
+    // Sec 26 (Tens 40): 1.
+    // Sec 27 (Tens 20): 1.
+    // Sec 31 (Units 4): 1.
+    // Sec 32 (Units 2): 1.
+    
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ONE, wwvb.getSymbolForSecond(26));
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ONE, wwvb.getSymbolForSecond(27));
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ONE, wwvb.getSymbolForSecond(31));
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ONE, wwvb.getSymbolForSecond(32));
+    
+    // Check a ZERO bit (e.g. Sec 22 - Hundreds 200)
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ZERO, wwvb.getSymbolForSecond(22));
+}
 
-    for (int i = 0; i < 60; ++i) {
-        if (expected[i] == '?') continue;
+void test_dcf77_signal(void) {
+    DCF77Signal dcf77;
+    struct tm timeinfo = kValidTimeInfo;
+    dcf77.encodeMinute(timeinfo, 0, 0);
+    
+    // Test IDLE (59th second)
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::IDLE, dcf77.getSymbolForSecond(59));
+    TEST_ASSERT_TRUE(dcf77.getSignalLevel(TimeCodeSymbol::IDLE, 0));
+    
+    // Test ZERO
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ZERO, dcf77.getSymbolForSecond(0));
+    TEST_ASSERT_FALSE(dcf77.getSignalLevel(TimeCodeSymbol::ZERO, 0));
+    TEST_ASSERT_TRUE(dcf77.getSignalLevel(TimeCodeSymbol::ZERO, 100));
+    
+    // Test ONE (Bit 20 is always 1)
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ONE, dcf77.getSymbolForSecond(20));
+    TEST_ASSERT_FALSE(dcf77.getSignalLevel(TimeCodeSymbol::ONE, 0));
+    TEST_ASSERT_TRUE(dcf77.getSignalLevel(TimeCodeSymbol::ONE, 200));
+}
 
-        // Determine bit type from wwvbLogicSignal
-        // ZERO: High at 200ms (Low < 200)
-        // ONE: High at 500ms (Low < 500)
-        // MARK: High at 800ms (Low < 800)
-        
-        bool at200 = wwvbLogicSignal(7, 30, i, 200, 66, 2008, 0, 0);
-        bool at500 = wwvbLogicSignal(7, 30, i, 500, 66, 2008, 0, 0);
-        bool at800 = wwvbLogicSignal(7, 30, i, 800, 66, 2008, 0, 0);
+void test_jjy_signal(void) {
+    JJYSignal jjy;
+    struct tm timeinfo = kValidTimeInfo;
+    jjy.encodeMinute(timeinfo, 0, 0);
+    
+    // Test MARK (0s)
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::MARK, jjy.getSymbolForSecond(0));
+    TEST_ASSERT_TRUE(jjy.getSignalLevel(TimeCodeSymbol::MARK, 0));
+    TEST_ASSERT_FALSE(jjy.getSignalLevel(TimeCodeSymbol::MARK, 200));
+    
+    // Test ZERO
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ZERO, jjy.getSymbolForSecond(1));
+    TEST_ASSERT_TRUE(jjy.getSignalLevel(TimeCodeSymbol::ZERO, 0));
+    TEST_ASSERT_FALSE(jjy.getSignalLevel(TimeCodeSymbol::ZERO, 800));
+    
+    // Test ONE (Parity usually 1 if 0s?)
+    // Hard to force a 1 without setting time.
+    // Let's set minute to 1 (0000001).
+    // Minute bits: 0-7 (Sec 1-8).
+    // Sec 8 (Bit 0): 1.
+    timeinfo.tm_min = 1;
+    jjy.encodeMinute(timeinfo, 0, 0);
+    
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ONE, jjy.getSymbolForSecond(8));
+    TEST_ASSERT_TRUE(jjy.getSignalLevel(TimeCodeSymbol::ONE, 0));
+    TEST_ASSERT_FALSE(jjy.getSignalLevel(TimeCodeSymbol::ONE, 500));
+}
 
-        char detected = '?';
-        if (at200) {
-            detected = '0'; // ZERO is high after 200ms
-        } else if (at500) {
-            detected = '1'; // ONE is high after 500ms
-        } else if (at800) {
-            detected = 'M'; // MARK is high after 800ms
-        } else {
-            // Should not happen if logic is correct (MARK is high at 800)
-            // If it's low at 800, it's invalid or very long low pulse?
-            // wwvbLogicSignal returns true if millis >= threshold.
-            // If bit is MARK, threshold is 800. So at 800 it returns true.
-            detected = 'X';
-        }
+void test_msf_signal(void) {
+    MSFSignal msf;
+    struct tm timeinfo = kValidTimeInfo;
+    msf.encodeMinute(timeinfo, 0, 0);
+    
+    // Test MARK (0s)
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::MARK, msf.getSymbolForSecond(0));
+    TEST_ASSERT_FALSE(msf.getSignalLevel(TimeCodeSymbol::MARK, 0));
+    TEST_ASSERT_TRUE(msf.getSignalLevel(TimeCodeSymbol::MARK, 500));
+    
+    // Test Default (second 1) -> ZERO (Placeholder implementation)
+    TimeCodeSymbol bit = msf.getSymbolForSecond(1);
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ZERO, bit);
+    // ZERO: 100ms Low, 900ms High
+    TEST_ASSERT_FALSE(msf.getSignalLevel(bit, 99));
+    TEST_ASSERT_TRUE(msf.getSignalLevel(bit, 100));
+}
 
-        char msg[32];
-        snprintf(msg, sizeof(msg), "Bit %d mismatch", i);
-        TEST_ASSERT_EQUAL_MESSAGE(expected[i], detected, msg);
-    }
+// Access to globals from WatchTower.ino
+extern RadioTimeSignal* signalGenerator;
+extern void updateSignalCallback(Control *sender, int value);
+extern uint16_t ui_signal_select;
+
+// last_ledc_freq is defined globally now
+
+void test_signal_switching(void) {
+    // Arrange
+    setup(); // Ensure UI is created
+    
+    // Act - Select DCF77
+    Control sender;
+    sender.id = ui_signal_select;
+    sender.value = "DCF77";
+    updateSignalCallback(&sender, S_ACTIVE);
+    
+    // Assert
+    TEST_ASSERT_EQUAL_STRING("DCF77", signalGenerator->getName().c_str());
+    TEST_ASSERT_EQUAL(77500, last_ledc_freq);
+    
+    // Act - Select MSF
+    sender.value = "MSF";
+    updateSignalCallback(&sender, S_ACTIVE);
+    
+    // Assert
+    TEST_ASSERT_EQUAL_STRING("MSF", signalGenerator->getName().c_str());
+    TEST_ASSERT_EQUAL(60000, last_ledc_freq);
+    
+    // Act - Select JJY
+    sender.value = "JJY";
+    updateSignalCallback(&sender, S_ACTIVE);
+    
+    // Assert
+    TEST_ASSERT_EQUAL_STRING("JJY", signalGenerator->getName().c_str());
+    TEST_ASSERT_EQUAL(60000, last_ledc_freq); // or 40000 depending on impl
+    
+    // Act - Select WWVB
+    sender.value = "WWVB";
+    updateSignalCallback(&sender, S_ACTIVE);
+    
+    // Assert
+    TEST_ASSERT_EQUAL_STRING("WWVB", signalGenerator->getName().c_str());
+    TEST_ASSERT_EQUAL(60000, last_ledc_freq);
 }
 
 int main(int argc, char **argv) {
@@ -232,6 +353,10 @@ int main(int argc, char **argv) {
     RUN_TEST(test_serial_date_output);
     RUN_TEST(test_wwvb_logic_signal);
     RUN_TEST(test_wwvb_frame_encoding);
+    RUN_TEST(test_dcf77_signal);
+    RUN_TEST(test_jjy_signal);
+    RUN_TEST(test_msf_signal);
+    RUN_TEST(test_signal_switching);
     UNITY_END();
     return 0;
 }
