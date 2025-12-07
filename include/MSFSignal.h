@@ -19,63 +19,61 @@ public:
         breakdown.tm_min += 1;
         mktime(&breakdown); // Normalize
         
-        uint64_t aBits = 0b1111110; // Bits 53-59 (Marker)
+        aBits_ = 0b1111110; // Bits 53-59 (Marker)
         
-        aBits |= to_bcd(breakdown.tm_year % 100) << (59 - 24);
-        aBits |= to_bcd(breakdown.tm_mon + 1) << (59 - 29);
-        aBits |= to_bcd(breakdown.tm_mday) << (59 - 35);
-        aBits |= to_bcd(breakdown.tm_wday) << (59 - 38);
-        aBits |= to_bcd(breakdown.tm_hour) << (59 - 44);
-        aBits |= to_bcd(breakdown.tm_min) << (59 - 51);
+        aBits_ |= to_bcd(breakdown.tm_year % 100) << (59 - 24);
+        aBits_ |= to_bcd(breakdown.tm_mon + 1) << (59 - 29);
+        aBits_ |= to_bcd(breakdown.tm_mday) << (59 - 35);
+        aBits_ |= to_bcd(breakdown.tm_wday) << (59 - 38);
+        aBits_ |= to_bcd(breakdown.tm_hour) << (59 - 44);
+        aBits_ |= to_bcd(breakdown.tm_min) << (59 - 51);
         
-        uint64_t bBits = 0;
+        bBits_ = 0;
         // DUT1 (1-16) - 0
         // Summer time warning (53) - 0
         
         // Year parity (17-24)
-        if (countSetBits(aBits, 59 - 24, 59 - 17) % 2 == 0) {
-            bBits |= 1ULL << (59 - 54);
+        if (countSetBits(aBits_, 59 - 24, 59 - 17) % 2 == 0) {
+            bBits_ |= 1ULL << (59 - 54);
         }
         // Day parity (25-35)
-        if (countSetBits(aBits, 59 - 35, 59 - 25) % 2 == 0) {
-            bBits |= 1ULL << (59 - 55);
+        if (countSetBits(aBits_, 59 - 35, 59 - 25) % 2 == 0) {
+            bBits_ |= 1ULL << (59 - 55);
         }
         // Weekday parity (36-38)
-        if (countSetBits(aBits, 59 - 38, 59 - 36) % 2 == 0) {
-            bBits |= 1ULL << (59 - 56);
+        if (countSetBits(aBits_, 59 - 38, 59 - 36) % 2 == 0) {
+            bBits_ |= 1ULL << (59 - 56);
         }
         // Time parity (39-51)
-        if (countSetBits(aBits, 59 - 51, 59 - 39) % 2 == 0) {
-            bBits |= 1ULL << (59 - 57);
+        if (countSetBits(aBits_, 59 - 51, 59 - 39) % 2 == 0) {
+            bBits_ |= 1ULL << (59 - 57);
         }
         
         // DST (58)
         if (breakdown.tm_isdst) {
-            bBits |= 1ULL << (59 - 58);
-        }
-
-        // Populate array
-        for (int i = 0; i < 60; i++) {
-            if (i == 0) {
-                frameBits_[i] = TimeCodeSymbol::MARK;
-            } else {
-                bool a = (aBits >> (59 - i)) & 1;
-                bool b = (bBits >> (59 - i)) & 1;
-                
-                if (!a && !b) frameBits_[i] = TimeCodeSymbol::ZERO;
-                else if (a && !b) frameBits_[i] = TimeCodeSymbol::ONE;
-                else if (!a && b) frameBits_[i] = TimeCodeSymbol::MSF_01;
-                else if (a && b) frameBits_[i] = TimeCodeSymbol::MSF_11;
-            }
+            bBits_ |= 1ULL << (59 - 58);
         }
     }
 
     TimeCodeSymbol getSymbolForSecond(int second) override {
         if (second < 0 || second > 59) return TimeCodeSymbol::ZERO;
-        return frameBits_[second];
+
+        if (second == 0) {
+            return TimeCodeSymbol::MARK;
+        }
+
+        bool a = (aBits_ >> (59 - second)) & 1;
+        bool b = (bBits_ >> (59 - second)) & 1;
+        
+        if (!a && !b) return TimeCodeSymbol::ZERO;
+        else if (a && !b) return TimeCodeSymbol::ONE;
+        else if (!a && b) return TimeCodeSymbol::MSF_01;
+        else if (a && b) return TimeCodeSymbol::MSF_11;
+        
+        return TimeCodeSymbol::ZERO; // Should not reach here
     }
 
-    bool getSignalLevel(TimeCodeSymbol symbol, int millis) override {
+    bool getLevelForTimeCodeSymbol(TimeCodeSymbol symbol, int millis) override {
         // MSF
         // 0-100: OFF
         // 100-200: A (OFF if 1)
@@ -97,7 +95,8 @@ public:
     }
 
 private:
-    TimeCodeSymbol frameBits_[60];
+    uint64_t aBits_ = 0;
+    uint64_t bBits_ = 0;
 };
 
 #endif // MSF_SIGNAL_H

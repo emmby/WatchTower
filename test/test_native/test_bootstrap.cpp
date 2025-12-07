@@ -176,17 +176,17 @@ void test_wwvb_logic_signal(void) {
     TimeCodeSymbol bit = wwvb.getSymbolForSecond(0);
     TEST_ASSERT_EQUAL(TimeCodeSymbol::MARK, bit);
     
-    TEST_ASSERT_FALSE(wwvb.getSignalLevel(bit, 0));
-    TEST_ASSERT_FALSE(wwvb.getSignalLevel(bit, 799));
-    TEST_ASSERT_TRUE(wwvb.getSignalLevel(bit, 800));
+    TEST_ASSERT_FALSE(wwvb.getLevelForTimeCodeSymbol(bit, 0));
+    TEST_ASSERT_FALSE(wwvb.getLevelForTimeCodeSymbol(bit, 799));
+    TEST_ASSERT_TRUE(wwvb.getLevelForTimeCodeSymbol(bit, 800));
 
     // Test ZERO
     // timeinfo.tm_sec = 1; // Not needed for encodeMinute unless we re-configure
     bit = wwvb.getSymbolForSecond(1);
     TEST_ASSERT_EQUAL(TimeCodeSymbol::ZERO, bit);
-    TEST_ASSERT_FALSE(wwvb.getSignalLevel(bit, 0));
-    TEST_ASSERT_FALSE(wwvb.getSignalLevel(bit, 199));
-    TEST_ASSERT_TRUE(wwvb.getSignalLevel(bit, 200));
+    TEST_ASSERT_FALSE(wwvb.getLevelForTimeCodeSymbol(bit, 0));
+    TEST_ASSERT_FALSE(wwvb.getLevelForTimeCodeSymbol(bit, 199));
+    TEST_ASSERT_TRUE(wwvb.getLevelForTimeCodeSymbol(bit, 200));
 
     // Test ONE
     // We need to find a second that is 1.
@@ -198,9 +198,9 @@ void test_wwvb_logic_signal(void) {
     bit = wwvb.getSymbolForSecond(58);
     // DST bit 58 is set if dst is on.
     TEST_ASSERT_EQUAL(TimeCodeSymbol::ONE, bit);
-    TEST_ASSERT_FALSE(wwvb.getSignalLevel(bit, 0));
-    TEST_ASSERT_FALSE(wwvb.getSignalLevel(bit, 499));
-    TEST_ASSERT_TRUE(wwvb.getSignalLevel(bit, 500));
+    TEST_ASSERT_FALSE(wwvb.getLevelForTimeCodeSymbol(bit, 0));
+    TEST_ASSERT_FALSE(wwvb.getLevelForTimeCodeSymbol(bit, 499));
+    TEST_ASSERT_TRUE(wwvb.getLevelForTimeCodeSymbol(bit, 500));
 }
 
 void test_wwvb_frame_encoding(void) {
@@ -241,17 +241,17 @@ void test_dcf77_signal(void) {
     
     // Test IDLE (59th second)
     TEST_ASSERT_EQUAL(TimeCodeSymbol::IDLE, dcf77.getSymbolForSecond(59));
-    TEST_ASSERT_TRUE(dcf77.getSignalLevel(TimeCodeSymbol::IDLE, 0));
+    TEST_ASSERT_TRUE(dcf77.getLevelForTimeCodeSymbol(TimeCodeSymbol::IDLE, 0));
     
     // Test ZERO
     TEST_ASSERT_EQUAL(TimeCodeSymbol::ZERO, dcf77.getSymbolForSecond(0));
-    TEST_ASSERT_FALSE(dcf77.getSignalLevel(TimeCodeSymbol::ZERO, 0));
-    TEST_ASSERT_TRUE(dcf77.getSignalLevel(TimeCodeSymbol::ZERO, 100));
+    TEST_ASSERT_FALSE(dcf77.getLevelForTimeCodeSymbol(TimeCodeSymbol::ZERO, 0));
+    TEST_ASSERT_TRUE(dcf77.getLevelForTimeCodeSymbol(TimeCodeSymbol::ZERO, 100));
     
     // Test ONE (Bit 20 is always 1)
     TEST_ASSERT_EQUAL(TimeCodeSymbol::ONE, dcf77.getSymbolForSecond(20));
-    TEST_ASSERT_FALSE(dcf77.getSignalLevel(TimeCodeSymbol::ONE, 0));
-    TEST_ASSERT_TRUE(dcf77.getSignalLevel(TimeCodeSymbol::ONE, 200));
+    TEST_ASSERT_FALSE(dcf77.getLevelForTimeCodeSymbol(TimeCodeSymbol::ONE, 0));
+    TEST_ASSERT_TRUE(dcf77.getLevelForTimeCodeSymbol(TimeCodeSymbol::ONE, 200));
 }
 
 void test_jjy_signal(void) {
@@ -261,13 +261,13 @@ void test_jjy_signal(void) {
     
     // Test MARK (0s)
     TEST_ASSERT_EQUAL(TimeCodeSymbol::MARK, jjy.getSymbolForSecond(0));
-    TEST_ASSERT_TRUE(jjy.getSignalLevel(TimeCodeSymbol::MARK, 0));
-    TEST_ASSERT_FALSE(jjy.getSignalLevel(TimeCodeSymbol::MARK, 200));
+    TEST_ASSERT_TRUE(jjy.getLevelForTimeCodeSymbol(TimeCodeSymbol::MARK, 0));
+    TEST_ASSERT_FALSE(jjy.getLevelForTimeCodeSymbol(TimeCodeSymbol::MARK, 200));
     
     // Test ZERO
     TEST_ASSERT_EQUAL(TimeCodeSymbol::ZERO, jjy.getSymbolForSecond(1));
-    TEST_ASSERT_TRUE(jjy.getSignalLevel(TimeCodeSymbol::ZERO, 0));
-    TEST_ASSERT_FALSE(jjy.getSignalLevel(TimeCodeSymbol::ZERO, 800));
+    TEST_ASSERT_TRUE(jjy.getLevelForTimeCodeSymbol(TimeCodeSymbol::ZERO, 0));
+    TEST_ASSERT_FALSE(jjy.getLevelForTimeCodeSymbol(TimeCodeSymbol::ZERO, 800));
     
     // Test ONE (Parity usually 1 if 0s?)
     // Hard to force a 1 without setting time.
@@ -278,8 +278,8 @@ void test_jjy_signal(void) {
     jjy.encodeMinute(timeinfo, 0, 0);
     
     TEST_ASSERT_EQUAL(TimeCodeSymbol::ONE, jjy.getSymbolForSecond(8));
-    TEST_ASSERT_TRUE(jjy.getSignalLevel(TimeCodeSymbol::ONE, 0));
-    TEST_ASSERT_FALSE(jjy.getSignalLevel(TimeCodeSymbol::ONE, 500));
+    TEST_ASSERT_TRUE(jjy.getLevelForTimeCodeSymbol(TimeCodeSymbol::ONE, 0));
+    TEST_ASSERT_FALSE(jjy.getLevelForTimeCodeSymbol(TimeCodeSymbol::ONE, 500));
 }
 
 void test_msf_signal(void) {
@@ -289,15 +289,15 @@ void test_msf_signal(void) {
     
     // Test MARK (0s)
     TEST_ASSERT_EQUAL(TimeCodeSymbol::MARK, msf.getSymbolForSecond(0));
-    TEST_ASSERT_FALSE(msf.getSignalLevel(TimeCodeSymbol::MARK, 0));
-    TEST_ASSERT_TRUE(msf.getSignalLevel(TimeCodeSymbol::MARK, 500));
+    TEST_ASSERT_FALSE(msf.getLevelForTimeCodeSymbol(TimeCodeSymbol::MARK, 0));
+    TEST_ASSERT_TRUE(msf.getLevelForTimeCodeSymbol(TimeCodeSymbol::MARK, 500));
     
     // Test Default (second 1) -> ZERO (Placeholder implementation)
     TimeCodeSymbol bit = msf.getSymbolForSecond(1);
     TEST_ASSERT_EQUAL(TimeCodeSymbol::ZERO, bit);
     // ZERO: 100ms Low, 900ms High
-    TEST_ASSERT_FALSE(msf.getSignalLevel(bit, 99));
-    TEST_ASSERT_TRUE(msf.getSignalLevel(bit, 100));
+    TEST_ASSERT_FALSE(msf.getLevelForTimeCodeSymbol(bit, 99));
+    TEST_ASSERT_TRUE(msf.getLevelForTimeCodeSymbol(bit, 100));
 }
 
 // Access to globals from WatchTower.ino

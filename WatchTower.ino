@@ -373,7 +373,7 @@ void loop() {
     }
     broadcast[buf_now_utc.tm_sec] = bit;
 
-    logicValue = signalGenerator->getSignalLevel(bit, now.tv_usec/1000);
+    logicValue = signalGenerator->getLevelForTimeCodeSymbol(bit, now.tv_usec/1000);
 
   // --- UI UPDATE LOGIC ---
   if( logicValue != prevLogicValue ) {
@@ -395,7 +395,7 @@ void loop() {
     char timeStringBuff3[20];
     strftime(timeStringBuff, sizeof(timeStringBuff), "%A, %B %d %Y %H:%M:%S", &buf_now_local); // time
     strftime(timeStringBuff3, sizeof(timeStringBuff3), "%z %Z", &buf_now_local); // timezone
-    sprintf(timeStringBuff2,"%s.%03d%s", timeStringBuff, now.tv_usec/1000, timeStringBuff3 ); // time+millis+tz
+    snprintf(timeStringBuff2, sizeof(timeStringBuff2), "%s.%03d%s", timeStringBuff, now.tv_usec/1000, timeStringBuff3 ); // time+millis+tz
 
     char lastSyncStringBuff[100]; // Buffer to hold the formatted time string
     if (lastSync == 0) {

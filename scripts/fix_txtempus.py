@@ -1,3 +1,9 @@
+"""
+fix_txtempus.py
+
+Removes unnecessary source files from the txtempus library to prevent build errors 
+in the native environment, specifically Raspberry Pi specific implementations.
+"""
 import os
 from os.path import join, isfile
 

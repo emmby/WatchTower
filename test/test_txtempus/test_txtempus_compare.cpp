@@ -1,3 +1,11 @@
+/*
+ * test_txtempus_compare.cpp
+ * 
+ * Defines comparison tests between WatchTower's signal logic and a reference 
+ * implementation from the txtempus library. Validates signal encoding for different
+ * protocols (WWVB, DCF77, MSF, JJY) across various dates and times.
+ */
+
 #include <Arduino.h>
 #include <unity.h>
 #include <ctime>
@@ -138,7 +146,7 @@ void run_comparison(const char* timezone, bool input_is_utc, bool add_minute, co
             // Check sample points
             int check_points[] = {50, 150, 250, 550, 850};
             for (int ms : check_points) {
-                bool myLevel = mySignal.getSignalLevel(myBit, ms);
+                bool myLevel = mySignal.getLevelForTimeCodeSymbol(myBit, ms);
                 bool refLevel = getTxtempusLevel(mod, ms);
                 
                 if (myLevel != refLevel) {

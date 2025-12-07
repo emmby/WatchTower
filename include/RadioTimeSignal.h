@@ -3,6 +3,12 @@
 
 #include <Arduino.h>
 
+/**
+ * @brief Base class for time signal generators (WWVB, DCF77, MSF, JJY).
+ * 
+ * Defines the interface for encoding the current time into a sequence of symbols
+ * and converting those symbols into signal levels (High/Low) for PWM output.
+ */
 enum class TimeCodeSymbol {
   ZERO = 0,
   ONE = 1,
@@ -33,10 +39,13 @@ public:
 
     // Returns a logical high or low to indicate whether the
     // PWM signal should be high or low based on the current time
-    virtual bool getSignalLevel(TimeCodeSymbol symbol, int millis) = 0;
+    virtual bool getLevelForTimeCodeSymbol(TimeCodeSymbol symbol, int millis) = 0;
 
 protected:
-    // Helper to encode BCD
+    // Helper to encode BCD (Binary Coded Decimal).
+    // The tens digit is in the upper nibble (bits 4-7),
+    // and the units digit is in the lower nibble (bits 0-3).
+    // Example: 25 -> 0x25 (Binary: 0010 0101)
     uint64_t to_bcd(int n) {
         return (((n / 10) % 10) << 4) | (n % 10);
     }

@@ -14,24 +14,23 @@ public:
     }
 
     void encodeMinute(const struct tm& timeinfo, int today_start_isdst, int tomorrow_start_isdst) override {
-        // Calculate data bits using existing logic
-        uint64_t dataBits = 0;
+        frameBits_ = 0;
         
         // Minute: 01, 02, 03, 05, 06, 07, 08 (Bits 58-51? No, 59-sec)
-        dataBits |= to_padded5_bcd(timeinfo.tm_min) << (59 - 8);
+        frameBits_ |= to_padded5_bcd(timeinfo.tm_min) << (59 - 8);
 
         // Hour: 12, 13, 15, 16, 17, 18 (Bits 59-18)
-        dataBits |= to_padded5_bcd(timeinfo.tm_hour) << (59 - 18);
+        frameBits_ |= to_padded5_bcd(timeinfo.tm_hour) << (59 - 18);
 
         // Day of Year: 22, 23, 25, 26, 27, 28, 30, 31, 32, 33 (Bits 59-33)
-        dataBits |= to_padded5_bcd(timeinfo.tm_yday + 1) << (59 - 33);
+        frameBits_ |= to_padded5_bcd(timeinfo.tm_yday + 1) << (59 - 33);
 
         // Year: 45, 46, 47, 48, 50, 51, 52, 53 (Bits 59-53)
-        dataBits |= to_padded5_bcd((timeinfo.tm_year + 1900) % 100) << (59 - 53);
+        frameBits_ |= to_padded5_bcd((timeinfo.tm_year + 1900) % 100) << (59 - 53);
 
         // Leap Year: 55
         if (is_leap_year(timeinfo.tm_year + 1900)) {
-            dataBits |= 1ULL << (59 - 55);
+            frameBits_ |= 1ULL << (59 - 55);
         }
 
         // DST: 57, 58
@@ -48,28 +47,23 @@ public:
             dst1 = false; dst2 = true;
         }
 
-        if (dst1) dataBits |= 1ULL << (59 - 57);
-        if (dst2) dataBits |= 1ULL << (59 - 58);
-
-        // Populate array
-        for (int i = 0; i < 60; i++) {
-            // Markers
-            if (i == 0 || i == 9 || i == 19 || i == 29 || i == 39 || i == 49 || i == 59) {
-                frameBits_[i] = TimeCodeSymbol::MARK;
-            } else if( (dataBits >> (59 - i)) & 1 ) {
-                frameBits_[i] = TimeCodeSymbol::ONE;
-            } else {
-                frameBits_[i] = TimeCodeSymbol::ZERO;
-            }
-        }
+        if (dst1) frameBits_ |= 1ULL << (59 - 57);
+        if (dst2) frameBits_ |= 1ULL << (59 - 58);
     }
 
     TimeCodeSymbol getSymbolForSecond(int second) override {
         if (second < 0 || second > 59) return TimeCodeSymbol::ZERO;
-        return frameBits_[second];
+
+        // Markers
+        if (second == 0 || second == 9 || second == 19 || second == 29 || second == 39 || second == 49 || second == 59) {
+            return TimeCodeSymbol::MARK;
+        } 
+        
+        bool bitSet = (frameBits_ >> (59 - second)) & 1;
+        return bitSet ? TimeCodeSymbol::ONE : TimeCodeSymbol::ZERO;
     }
 
-    bool getSignalLevel(TimeCodeSymbol symbol, int millis) override {
+    bool getLevelForTimeCodeSymbol(TimeCodeSymbol symbol, int millis) override {
         // WWVB
         // 0: 200ms Low, 800ms High
         // 1: 500ms Low, 500ms High
@@ -84,7 +78,7 @@ public:
     }
 
 private:
-    TimeCodeSymbol frameBits_[60];
+    uint64_t frameBits_ = 0;
 };
 
 #endif // WWVB_SIGNAL_H
