@@ -28,7 +28,7 @@
 #include <ArduinoMDNS.h>
 #include <time.h>
 #include <esp_sntp.h>
-#include "customJS.h"
+#include "custom.h"
 
 // Flip to false to disable the built-in web ui.
 // You might want to do this to avoid leaving unnecessary open ports on your network.
@@ -139,7 +139,7 @@ void setup() {
   ESPUI.setVerbosity(Verbosity::Quiet);
   
   // Create Labels
-  ui_broadcast = ESPUI.label("Broadcast Waveform", ControlColor::Sunflower, "");
+  ui_broadcast = ESPUI.label("Broadcast Waveform<a href='https://github.com/emmby/WatchTower#about-wwvb' target='_blank'>ⓘ</a>", ControlColor::Sunflower, "");
   ui_time = ESPUI.label("Current Time", ControlColor::Turquoise, "Loading...");
   ui_date = ESPUI.label("Date", ControlColor::Emerald, "Loading...");
   ui_timezone = ESPUI.label("Timezone", ControlColor::Peterriver, timezone);
@@ -149,6 +149,7 @@ void setup() {
   ESPUI.setPanelWide(ui_broadcast, true);
   ESPUI.setElementStyle(ui_broadcast, "font-family: monospace");
   ESPUI.setCustomJS(customJS);
+  ESPUI.setCustomCSS(customCSS);
 
   // You may disable the internal webserver by commenting out this line
   if( ENABLE_WEB_UI ) {
