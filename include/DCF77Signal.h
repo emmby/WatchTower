@@ -41,56 +41,56 @@ public:
         
         // 21-27: Minute (BCD)
         // LSB at Sec 21 (Bit 38).
-        // reverse8Bits puts LSB at Bit 7.
+        // reverse8 puts LSB at Bit 7.
         // 7 + 31 = 38.
-        frameBits_ |= (uint64_t)reverse8Bits(toBCD(next_min.tm_min)) << 31;
+        frameBits_ |= (uint64_t)reverse8(to_bcd(next_min.tm_min)) << 31;
         
         // 28: Parity Minute
-        if (countSetBits(toBCD(next_min.tm_min)) % 2 != 0) {
+        if (countSetBits(to_bcd(next_min.tm_min)) % 2 != 0) {
             frameBits_ |= 1ULL << (59 - 28);
         }
         
         // 29-34: Hour (BCD)
         // LSB at Sec 29 (Bit 30).
         // 7 + 23 = 30.
-        frameBits_ |= (uint64_t)reverse8Bits(toBCD(next_min.tm_hour)) << 23;
+        frameBits_ |= (uint64_t)reverse8(to_bcd(next_min.tm_hour)) << 23;
         
         // 35: Parity Hour
-        if (countSetBits(toBCD(next_min.tm_hour)) % 2 != 0) {
+        if (countSetBits(to_bcd(next_min.tm_hour)) % 2 != 0) {
             frameBits_ |= 1ULL << (59 - 35);
         }
         
         // 36-41: Day (BCD)
         // LSB at Sec 36 (Bit 23).
         // 7 + 16 = 23.
-        frameBits_ |= (uint64_t)reverse8Bits(toBCD(next_min.tm_mday)) << 16;
+        frameBits_ |= (uint64_t)reverse8(to_bcd(next_min.tm_mday)) << 16;
         
         // 42-44: Day of Week (1=Mon...7=Sun)
         // tm_wday: 0=Sun, 1=Mon...
         int wday = next_min.tm_wday == 0 ? 7 : next_min.tm_wday;
         // LSB at Sec 42 (Bit 17).
         // wday is 3 bits.
-        // reverse8Bits puts LSB at Bit 7.
+        // reverse8 puts LSB at Bit 7.
         // 7 + 10 = 17.
-        frameBits_ |= (uint64_t)reverse8Bits(wday) << 10;
+        frameBits_ |= (uint64_t)reverse8(wday) << 10;
         
         // 45-49: Month (BCD)
         // LSB at Sec 45 (Bit 14).
         // 7 + 7 = 14.
-        frameBits_ |= (uint64_t)reverse8Bits(toBCD(next_min.tm_mon + 1)) << 7;
+        frameBits_ |= (uint64_t)reverse8(to_bcd(next_min.tm_mon + 1)) << 7;
         
         // 50-57: Year (BCD)
         // LSB at Sec 50 (Bit 9).
         // 7 + 2 = 9.
-        frameBits_ |= (uint64_t)reverse8Bits(toBCD((next_min.tm_year + 1900) % 100)) << 2;
+        frameBits_ |= (uint64_t)reverse8(to_bcd((next_min.tm_year + 1900) % 100)) << 2;
         
         // 58: Parity Date
         // Parity of Day, WDay, Month, Year.
         int p = 0;
-        p += countSetBits(toBCD(next_min.tm_mday));
+        p += countSetBits(to_bcd(next_min.tm_mday));
         p += countSetBits(wday);
-        p += countSetBits(toBCD(next_min.tm_mon + 1));
-        p += countSetBits(toBCD((next_min.tm_year + 1900) % 100));
+        p += countSetBits(to_bcd(next_min.tm_mon + 1));
+        p += countSetBits(to_bcd((next_min.tm_year + 1900) % 100));
         if (p % 2 != 0) {
             frameBits_ |= 1ULL << (59 - 58);
         }
