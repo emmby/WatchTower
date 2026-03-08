@@ -426,11 +426,11 @@ void loop() {
         ESPUI.print(ui_time_utc, buf);
 
         // Date (local with timezone label)
-        strftime(buf, sizeof(buf), "%A, %B %d %Y %Z", &buf_now_local);
+        strftime(buf, sizeof(buf), "%A, %B %d %Y (Day %j) %Z", &buf_now_local);
         ESPUI.print(ui_date, buf);
 
         // UTC Date
-        strftime(buf, sizeof(buf), "%A, %B %d %Y UTC", &buf_now_utc);
+        strftime(buf, sizeof(buf), "%A, %B %d %Y (Day %j) UTC", &buf_now_utc);
         ESPUI.print(ui_date_utc, buf);
 
         // Broadcast window
