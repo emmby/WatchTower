@@ -346,6 +346,86 @@ void test_signal_switching(void) {
     TEST_ASSERT_EQUAL(60000, last_ledc_freq);
 }
 
+void test_transition_stats_perfect_alignment(void) {
+    TransitionStats stats;
+    stats.recordTransition(0);    // baseline, not counted
+    stats.recordTransition(200);  // delta=200, 200%100=0
+    stats.recordTransition(500);  // delta=300, 300%100=0
+    stats.recordTransition(1300); // delta=800, 800%100=0
+    
+    TEST_ASSERT_EQUAL(3, stats.getTotalCount());
+    TEST_ASSERT_EQUAL(0, stats.getNonZeroCount());
+    TEST_ASSERT_FLOAT_WITHIN(0.01, 0.0, stats.getAverageJitter());
+    TEST_ASSERT_EQUAL(5, stats.getPercentile(99)); // bucket 0 upper bound
+    TEST_ASSERT_EQUAL(3, stats.getHistogramCount(0));
+}
+
+void test_transition_stats_jitter(void) {
+    TransitionStats stats;
+    stats.recordTransition(0);    // baseline
+    stats.recordTransition(203);  // delta=203, 203%100=3 -> bucket 0
+    stats.recordTransition(410);  // delta=207, 207%100=7 -> bucket 1
+    stats.recordTransition(722);  // delta=312, 312%100=12 -> bucket 2
+    
+    TEST_ASSERT_EQUAL(3, stats.getTotalCount());
+    TEST_ASSERT_EQUAL(3, stats.getNonZeroCount());
+    TEST_ASSERT_EQUAL(1, stats.getHistogramCount(0)); // 3ms
+    TEST_ASSERT_EQUAL(1, stats.getHistogramCount(1)); // 7ms
+    TEST_ASSERT_EQUAL(1, stats.getHistogramCount(2)); // 12ms
+}
+
+void test_transition_stats_wraparound(void) {
+    TransitionStats stats;
+    stats.recordTransition(0);    // baseline
+    // delta=197, 197%100=97, jitter = 100-97 = 3
+    stats.recordTransition(197);
+    // delta=201, 201%100=1, jitter = 1
+    stats.recordTransition(398);
+    
+    TEST_ASSERT_EQUAL(2, stats.getTotalCount());
+    TEST_ASSERT_EQUAL(2, stats.getNonZeroCount());
+    TEST_ASSERT_EQUAL(2, stats.getHistogramCount(0)); // both in 0-4ms bucket
+    TEST_ASSERT_FLOAT_WITHIN(0.01, 2.0, stats.getAverageJitter());
+}
+
+void test_transition_stats_average(void) {
+    TransitionStats stats;
+    stats.recordTransition(0);    // baseline
+    stats.recordTransition(210);  // delta=210, jitter 10
+    stats.recordTransition(430);  // delta=220, jitter 20
+    stats.recordTransition(760);  // delta=330, jitter 30
+    
+    TEST_ASSERT_FLOAT_WITHIN(0.01, 20.0, stats.getAverageJitter());
+    TEST_ASSERT_EQUAL(3, stats.getNonZeroCount());
+}
+
+void test_transition_stats_midnight_reset(void) {
+    TransitionStats stats;
+    stats.recordTransition(0);    // baseline
+    stats.recordTransition(200);  // counted
+    stats.recordTransition(403);  // counted
+    TEST_ASSERT_EQUAL(2, stats.getTotalCount());
+    
+    // Simulate midnight
+    stats.checkMidnightReset(0, 0);
+    TEST_ASSERT_EQUAL(0, stats.getTotalCount());
+    
+    // After reset, first transition is baseline again
+    stats.recordTransition(600);  // baseline (not counted)
+    stats.recordTransition(800);  // counted
+    stats.checkMidnightReset(0, 0); // should not reset again
+    TEST_ASSERT_EQUAL(1, stats.getTotalCount());
+    
+    // After leaving midnight minute, should arm for next reset
+    stats.checkMidnightReset(0, 1);
+    stats.recordTransition(1000);
+    TEST_ASSERT_EQUAL(2, stats.getTotalCount());
+    
+    // Next midnight should reset again
+    stats.checkMidnightReset(0, 0);
+    TEST_ASSERT_EQUAL(0, stats.getTotalCount());
+}
+
 int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_setup_completes);
@@ -357,6 +437,11 @@ int main(int argc, char **argv) {
     RUN_TEST(test_jjy_signal);
     RUN_TEST(test_msf_signal);
     RUN_TEST(test_signal_switching);
+    RUN_TEST(test_transition_stats_perfect_alignment);
+    RUN_TEST(test_transition_stats_jitter);
+    RUN_TEST(test_transition_stats_wraparound);
+    RUN_TEST(test_transition_stats_average);
+    RUN_TEST(test_transition_stats_midnight_reset);
     UNITY_END();
     return 0;
 }

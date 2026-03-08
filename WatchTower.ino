@@ -35,6 +35,7 @@
 #include "include/DCF77Signal.h"
 #include "include/MSFSignal.h"
 #include "include/JJYSignal.h"
+#include "include/TransitionStats.h"
 
 // Flip to false to disable the built-in web ui.
 // You might want to do this to avoid leaving unnecessary open ports on your network.
@@ -82,6 +83,7 @@ bool logicValue = 0; // TODO rename
 unsigned long lastSync = 0;
 TimeCodeSymbol broadcast[60];
 bool networkSyncEnabled = true;
+TransitionStats transitionStats;
 
 // ESPUI Interface IDs
 uint16_t ui_time;
@@ -382,6 +384,7 @@ void loop() {
   // --- UI UPDATE LOGIC ---
   if( logicValue != prevLogicValue ) {
     ledcWrite(PIN_ANTENNA, dutyCycle(logicValue));  // Update the duty cycle of the PWM
+    transitionStats.recordTransition(millis());
 
     // light up the pixel if desired
     if( pixel ) {
@@ -409,6 +412,20 @@ void loop() {
         snprintf(lastSyncStringBuff, sizeof(lastSyncStringBuff), "%lus ago", secondsSinceSync);
     }
     Serial.printf("%s [last sync %s]: %s\n",timeStringBuff2, lastSyncStringBuff, logicValue ? "1" : "0");
+
+    // Periodic transition timing stats
+    transitionStats.checkMidnightReset(buf_now_utc.tm_hour, buf_now_utc.tm_min);
+    static unsigned long lastStatsLog = 0;
+    if (millis() - lastStatsLog >= 60000) {
+        lastStatsLog = millis();
+        Serial.printf("[TransitionStats] n=%lu nonzero=%lu avg=%.1fms p90=%dms p95=%dms p99=%dms\n",
+            transitionStats.getTotalCount(),
+            transitionStats.getNonZeroCount(),
+            transitionStats.getAverageJitter(),
+            transitionStats.getPercentile(90),
+            transitionStats.getPercentile(95),
+            transitionStats.getPercentile(99));
+    }
 
     static int prevSecond = -1;
     if( prevSecond != buf_now_utc.tm_sec ) {
