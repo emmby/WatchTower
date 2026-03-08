@@ -85,7 +85,9 @@ bool networkSyncEnabled = true;
 
 // ESPUI Interface IDs
 uint16_t ui_time;
+uint16_t ui_time_utc;
 uint16_t ui_date;
+uint16_t ui_date_utc;
 uint16_t ui_timezone;
 uint16_t ui_broadcast;
 uint16_t ui_uptime;
@@ -245,7 +247,9 @@ void setup() {
   // Create Labels
   ui_broadcast = ESPUI.label("Broadcast Waveform", ControlColor::Sunflower, "");
   ui_time = ESPUI.label("Current Time", ControlColor::Turquoise, "Loading...");
+  ui_time_utc = ESPUI.addControl(ControlType::Label, "UTC", "Loading...", ControlColor::Turquoise, ui_time);
   ui_date = ESPUI.label("Date", ControlColor::Emerald, "Loading...");
+  ui_date_utc = ESPUI.addControl(ControlType::Label, "UTC", "Loading...", ControlColor::Emerald, ui_date);
   ui_timezone = ESPUI.label("Timezone", ControlColor::Peterriver, timezone);
   ui_uptime = ESPUI.label("System Uptime", ControlColor::Carrot, "0s");
   ui_last_sync = ESPUI.label("Last NTP Sync", ControlColor::Alizarin, "Pending...");
@@ -417,9 +421,17 @@ void loop() {
         strftime(buf, sizeof(buf), "%H:%M:%S%z %Z", &buf_now_local);
         ESPUI.print(ui_time, buf);
 
-        // Date
-        strftime(buf, sizeof(buf), "%A, %B %d %Y", &buf_now_local);
+        // UTC Time
+        strftime(buf, sizeof(buf), "%H:%M:%S UTC", &buf_now_utc);
+        ESPUI.print(ui_time_utc, buf);
+
+        // Date (local with timezone label)
+        strftime(buf, sizeof(buf), "%A, %B %d %Y %Z", &buf_now_local);
         ESPUI.print(ui_date, buf);
+
+        // UTC Date
+        strftime(buf, sizeof(buf), "%A, %B %d %Y UTC", &buf_now_utc);
+        ESPUI.print(ui_date_utc, buf);
 
         // Broadcast window
         for( int i=0; i<60; ++i ) { // TODO leap seconds
