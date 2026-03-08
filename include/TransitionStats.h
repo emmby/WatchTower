@@ -8,54 +8,51 @@
  * 
  * Every radio time signal transition should occur at an exact multiple of 100ms.
  * This class measures the "jitter" — the distance from the nearest 100ms boundary —
- * using the ESP32 boot clock (millis()) and stores results in a histogram with
- * 5ms-wide buckets (0–4ms, 5–9ms, ..., 45–50ms).
+ * using micros() for sub-millisecond precision. Results are stored in a histogram
+ * with 1ms-wide buckets (0ms, 1ms, 2ms, ..., 50ms).
  * 
  * Stats reset at midnight each day (UTC).
  */
 class TransitionStats {
 public:
-    static const int NUM_BUCKETS = 11;       // 0-4, 5-9, 10-14, ..., 45-50
-    static const int BUCKET_WIDTH_MS = 5;
-    static const int MAX_JITTER_MS = 50;
+    static const int NUM_BUCKETS = 51;        // 0, 1, 2, ..., 50 (one per ms)
+    static const int BUCKET_WIDTH_US = 1000;  // 1ms in micros
+    static const int MAX_JITTER_US = 50000;   // 50ms in micros
+    static const unsigned long HUNDRED_MS_US = 100000; // 100ms in micros
 
     TransitionStats() {
         reset();
     }
 
     /**
-     * Record a transition at the given boot clock time.
+     * Record a transition at the given boot clock time (in microseconds).
      * Computes the delta since the last transition, then measures
      * how far that delta is from the nearest multiple of 100ms.
      */
-    void recordTransition(unsigned long currentMillis) {
+    void recordTransition(unsigned long currentMicros) {
         if (!hasLastTransition_) {
-            // First transition after boot/reset — no delta to compute
             hasLastTransition_ = true;
-            lastTransitionMillis_ = currentMillis;
+            lastTransitionMicros_ = currentMicros;
             return;
         }
         
-        unsigned long delta = currentMillis - lastTransitionMillis_;
-        lastTransitionMillis_ = currentMillis;
+        unsigned long delta = currentMicros - lastTransitionMicros_;
+        lastTransitionMicros_ = currentMicros;
         
-        int offset = delta % 100;
-        int jitter = offset <= MAX_JITTER_MS ? offset : (100 - offset);
+        int offsetUs = delta % HUNDRED_MS_US;
+        int jitterUs = offsetUs <= MAX_JITTER_US ? offsetUs : (HUNDRED_MS_US - offsetUs);
         
-        int bucket = jitter / BUCKET_WIDTH_MS;
+        int bucket = jitterUs / BUCKET_WIDTH_US;
         if (bucket >= NUM_BUCKETS) bucket = NUM_BUCKETS - 1;
         
         histogram_[bucket]++;
         totalCount_++;
-        jitterSum_ += jitter;
-        if (jitter > 0) nonZeroCount_++;
+        jitterSumUs_ += jitterUs;
+        if (jitterUs >= BUCKET_WIDTH_US) nonZeroCount_++; // 1ms+ counts as non-zero
     }
 
     /**
      * Check if we've crossed midnight (UTC) and reset if so.
-     * Call this periodically from the main loop.
-     * @param utcHour current UTC hour (0-23)
-     * @param utcMinute current UTC minute (0-59)
      */
     void checkMidnightReset(int utcHour, int utcMinute) {
         bool isNearMidnight = (utcHour == 0 && utcMinute == 0);
@@ -69,32 +66,30 @@ public:
 
     /**
      * Compute the approximate Pth percentile from the histogram.
-     * Returns the upper bound of the bucket containing the Pth percentile.
-     * @param p percentile (0-100)
-     * @return jitter in ms at that percentile
+     * @return jitter in ms at that percentile (upper bound of bucket)
      */
     int getPercentile(int p) const {
         if (totalCount_ == 0) return 0;
         
-        unsigned long threshold = ((unsigned long)totalCount_ * p + 99) / 100; // ceiling
+        unsigned long threshold = ((unsigned long)totalCount_ * p + 99) / 100;
         unsigned long cumulative = 0;
         
         for (int i = 0; i < NUM_BUCKETS; i++) {
             cumulative += histogram_[i];
             if (cumulative >= threshold) {
-                // Return upper bound of this bucket
-                return (i + 1) * BUCKET_WIDTH_MS;
+                return i + 1; // upper bound in ms
             }
         }
-        return MAX_JITTER_MS;
+        return NUM_BUCKETS;
     }
 
     unsigned long getNonZeroCount() const { return nonZeroCount_; }
     unsigned long getTotalCount() const { return totalCount_; }
     
+    /** @return average jitter in milliseconds (floating point) */
     float getAverageJitter() const {
         if (totalCount_ == 0) return 0.0f;
-        return (float)jitterSum_ / totalCount_;
+        return (float)jitterSumUs_ / totalCount_ / 1000.0f;
     }
 
     unsigned long getHistogramCount(int bucket) const {
@@ -108,20 +103,20 @@ public:
         }
         totalCount_ = 0;
         nonZeroCount_ = 0;
-        jitterSum_ = 0;
+        jitterSumUs_ = 0;
         resetThisMinute_ = false;
         hasLastTransition_ = false;
-        lastTransitionMillis_ = 0;
+        lastTransitionMicros_ = 0;
     }
 
 private:
     unsigned long histogram_[NUM_BUCKETS];
     unsigned long totalCount_;
     unsigned long nonZeroCount_;
-    unsigned long jitterSum_;
-    bool resetThisMinute_;      // debounce: prevent multiple resets during 00:00
-    bool hasLastTransition_;    // true after first transition recorded
-    unsigned long lastTransitionMillis_;
+    unsigned long jitterSumUs_;
+    bool resetThisMinute_;
+    bool hasLastTransition_;
+    unsigned long lastTransitionMicros_;
 };
 
 #endif // TRANSITION_STATS_H

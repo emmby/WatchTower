@@ -384,7 +384,7 @@ void loop() {
   // --- UI UPDATE LOGIC ---
   if( logicValue != prevLogicValue ) {
     ledcWrite(PIN_ANTENNA, dutyCycle(logicValue));  // Update the duty cycle of the PWM
-    transitionStats.recordTransition(millis());
+    transitionStats.recordTransition(micros());
 
     // light up the pixel if desired
     if( pixel ) {
