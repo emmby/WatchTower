@@ -19,22 +19,54 @@ function convertToTable(containerSpan) {
     // 'M': 80% short, 20% tall. '0': 20% short, 80% tall.
     const DRAW_RATIOS = { 'M': 0.8, '0': 0.2, '1': 0.5 };
 
-    // --- WWVB Bit Group Definitions ---
+    // --- Protocol Bit Group Definitions ---
     // Each group: { label, start, end, weights: { bitIndex: bcdWeight } }
-    const BIT_GROUPS = [
-        { label: 'Minutes', start: 1, end: 8, weights: {1:40, 2:20, 3:10, 5:8, 6:4, 7:2, 8:1} },
-        { label: 'Hours', start: 12, end: 18, weights: {12:20, 13:10, 15:8, 16:4, 17:2, 18:1} },
-        { label: 'Day of year', start: 22, end: 33, weights: {22:200, 23:100, 25:80, 26:40, 27:20, 28:10, 30:8, 31:4, 32:2, 33:1} },
-        { label: 'Year', start: 45, end: 53, weights: {45:80, 46:40, 47:20, 48:10, 50:8, 51:4, 52:2, 53:1} }
-    ];
+    const PROTOCOL_GROUPS = {
+        WWVB: [
+            { label: 'Minutes', start: 1, end: 8, weights: {1:40, 2:20, 3:10, 5:8, 6:4, 7:2, 8:1} },
+            { label: 'Hours', start: 12, end: 18, weights: {12:20, 13:10, 15:8, 16:4, 17:2, 18:1} },
+            { label: 'Day of year', start: 22, end: 33, weights: {22:200, 23:100, 25:80, 26:40, 27:20, 28:10, 30:8, 31:4, 32:2, 33:1} },
+            { label: 'Year', start: 45, end: 53, weights: {45:80, 46:40, 47:20, 48:10, 50:8, 51:4, 52:2, 53:1} }
+        ],
+        JJY: [
+            { label: 'Minutes', start: 1, end: 8, weights: {1:40, 2:20, 3:10, 5:8, 6:4, 7:2, 8:1} },
+            { label: 'Hours', start: 12, end: 18, weights: {12:20, 13:10, 15:8, 16:4, 17:2, 18:1} },
+            { label: 'Day of year', start: 22, end: 33, weights: {22:200, 23:100, 25:80, 26:40, 27:20, 28:10, 30:8, 31:4, 32:2, 33:1} },
+            { label: 'Year', start: 41, end: 48, weights: {41:80, 42:40, 43:20, 44:10, 45:8, 46:4, 47:2, 48:1} },
+            { label: 'Weekday', start: 50, end: 52, weights: {50:4, 51:2, 52:1} }
+        ],
+        DCF77: [
+            { label: 'Minutes', start: 21, end: 27, weights: {21:1, 22:2, 23:4, 24:8, 25:10, 26:20, 27:40} },
+            { label: 'Hours', start: 29, end: 34, weights: {29:1, 30:2, 31:4, 32:8, 33:10, 34:20} },
+            { label: 'Day', start: 36, end: 41, weights: {36:1, 37:2, 38:4, 39:8, 40:10, 41:20} },
+            { label: 'Weekday', start: 42, end: 44, weights: {42:1, 43:2, 44:4} },
+            { label: 'Month', start: 45, end: 49, weights: {45:1, 46:2, 47:4, 48:8, 49:10} },
+            { label: 'Year', start: 50, end: 57, weights: {50:1, 51:2, 52:4, 53:8, 54:10, 55:20, 56:40, 57:80} }
+        ],
+        MSF: [
+            { label: 'Year', start: 17, end: 24, weights: {17:80, 18:40, 19:20, 20:10, 21:8, 22:4, 23:2, 24:1} },
+            { label: 'Month', start: 25, end: 29, weights: {25:10, 26:8, 27:4, 28:2, 29:1} },
+            { label: 'Day', start: 30, end: 35, weights: {30:20, 31:10, 32:8, 33:4, 34:2, 35:1} },
+            { label: 'Weekday', start: 36, end: 38, weights: {36:4, 37:2, 38:1} },
+            { label: 'Hours', start: 39, end: 44, weights: {39:20, 40:10, 41:8, 42:4, 43:2, 44:1} },
+            { label: 'Minutes', start: 45, end: 51, weights: {45:40, 46:20, 47:10, 48:8, 49:4, 50:2, 51:1} }
+        ]
+    };
+
+    // --- Detect active protocol from the Signal Protocol select element ---
+    let activeProtocol = 'WWVB'; // default
+    const selectEls = document.querySelectorAll('select');
+    for (const sel of selectEls) {
+        if (sel.value && PROTOCOL_GROUPS[sel.value]) {
+            activeProtocol = sel.value;
+            break;
+        }
+    }
+    const BIT_GROUPS = PROTOCOL_GROUPS[activeProtocol] || PROTOCOL_GROUPS.WWVB;
 
     // Build lookup maps from the group definitions
     const bitToWeight = {};
-    const bitToGroup = {};
     BIT_GROUPS.forEach(g => {
-        for (let i = g.start; i <= g.end; i++) {
-            bitToGroup[i] = g.label;
-        }
         Object.entries(g.weights).forEach(([bit, weight]) => {
             bitToWeight[parseInt(bit)] = weight;
         });
