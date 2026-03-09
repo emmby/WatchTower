@@ -21,7 +21,7 @@
 // - Arduino Nano ESP32 (via wokwi)
 
 #include <WiFiManager.h>
-#include <Adafruit_NeoPixel.h>
+#include "include/StatusLED.h"
 #include <SPI.h>
 #include <ESPUI.h>
 #include <WiFiUdp.h>
@@ -62,19 +62,7 @@ RadioTimeSignal* signalGenerator = &wwvb;
 
 const char* const ntpServer = "pool.ntp.org";
 
-// Configure the optional onboard neopixel
-#ifdef PIN_NEOPIXEL
-Adafruit_NeoPixel* const pixel = new Adafruit_NeoPixel(1, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800);
-#else
-Adafruit_NeoPixel* const pixel = NULL;
-#endif
-
-const uint8_t LED_BRIGHTNESS = 10; // very dim, 0-255
-const uint32_t COLOR_READY = pixel ? pixel->Color(0, 60, 0) : 0; // green https://share.google/4WKm4XDkH9tfm3ESC
-const uint32_t COLOR_LOADING = pixel ? pixel->Color(60, 32, 0) : 0; // orange https://share.google/7tT5GPxskZi8t8qmx
-const uint32_t COLOR_ERROR = pixel ? pixel->Color(150, 0, 0) : 0; // red https://share.google/nx2jWYSoGtl0opkzL
-const uint32_t COLOR_TRANSMIT = pixel ? pixel->Color(32, 0, 0) : 0; // dim red https://share.google/wYFYM3t1kDeOJfr1U
-
+StatusLED statusLED;
 WiFiManager wifiManager;
 WiFiUDP udp;
 MDNS mdns(udp);
@@ -258,12 +246,8 @@ void setup() {
   delay(1000);
 
   pinMode(PIN_ANTENNA, OUTPUT);
-  if( pixel ) {
-    pixel->begin();
-    pixel->setBrightness(LED_BRIGHTNESS); // very dim
-    pixel->setPixelColor(0, COLOR_LOADING );
-    pixel->show();
-  }
+  statusLED.begin();
+  statusLED.setLoading();
 
   // E (14621) rmt: rmt_new_tx_channel(269): not able to power down in light sleep
   digitalWrite(PIN_ANTENNA, 0);
@@ -360,10 +344,7 @@ void setup() {
       Serial.println("Got the time from NTP");
     } else {
       Serial.println("Failed to obtain time");
-      if( pixel ) {
-          pixel->setPixelColor(0, COLOR_ERROR );
-          pixel->show();
-      }
+      statusLED.setError();
       delay(3000);
       ESP.restart();
     }
@@ -374,14 +355,7 @@ void setup() {
   // Start the carrier signal using 8-bit (0-255) resolution
   ledcAttach(PIN_ANTENNA, signalGenerator->getFrequency(), 8);
 
-  // green means go
-  if( pixel ) {
-    pixel->setPixelColor(0, COLOR_READY );
-    pixel->show();
-    delay(3000);
-    pixel->clear();  
-    pixel->show();
-  }
+  statusLED.setReady();
 
   // Start the high-priority signal timer (1ms interval).
   // This ensures PWM transitions happen on time regardless of WiFi/ESPUI activity.
@@ -448,14 +422,7 @@ void loop() {
     int sec = lastTransitionSecond;
     transitionStats.recordTransition(usec, sec);
 
-    // light up the pixel if desired
-    if( pixel ) {
-      if( logicValue == 1 ) {
-        pixel->setPixelColor(0, COLOR_TRANSMIT ); // don't call show yet, the color may change
-      } else {
-        pixel->clear();
-      }
-    }
+    statusLED.setTransmitting(logicValue);
 
     // do any logging after we set the bit to not slow anything down,
     // serial port I/O is slow!
@@ -562,16 +529,12 @@ void loop() {
     // Only restart if it's past 12pm local time to avoid rebooting while a device is syncing
     if( networkSyncEnabled && (millis() - lastSync > 24 * 60 * 60 * 1000) && buf_now_local.tm_hour >= 12 ) {
       Serial.println("Last sync more than 24 hours ago, rebooting.");
-      if( pixel ) {
-        pixel->setPixelColor(0, COLOR_ERROR );
-        delay(3000);
-      }
+      statusLED.setError();
+      delay(3000);
       ESP.restart();
     }
 
-    if( pixel ) {
-        pixel->show();
-    }
+    statusLED.show();
   }  
 }
 
