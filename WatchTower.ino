@@ -1,4 +1,7 @@
+// ========================
 // INSTRUCTIONS
+// ========================
+
 // - Add the following dependencies to your Arduino libraries:
 //     - Adafruit NeoPixel ~1.15.2
 //     - ESPUI ~2.2.4
@@ -67,8 +70,6 @@ MSFSignal msf;
 JJYSignal jjy;
 RadioTimeSignal* signalGenerator = &wwvb;
 
-const char* const ntpServer = "pool.ntp.org";
-
 StatusLED statusLED;
 WebUI webUI;
 WiFiManager wifiManager;
@@ -78,6 +79,7 @@ Preferences preferences;
 bool logicValue = 0; // TODO rename
 unsigned long lastSync = 0;
 bool networkSyncEnabled = true;
+const char* const ntpServer = "pool.ntp.org";
 
 
 // --- Signal Generation ---
