@@ -178,120 +178,7 @@ function convertToTable(containerSpan) {
     containerSpan.prepend(canvas);
 }
 
-/**
- * Converts a jitter data label into a histogram visualization.
- * Data format: "n=N|nz=NZ|avg=A|p90=P|p95=P|p99=P|bucket:count,bucket:count,..."
- */
-function convertToHistogram(containerSpan) {
-    const rawText = containerSpan.textContent.trim();
-    if (!rawText.includes('|')) return;
 
-    // Split on || first to separate today's data from history
-    const sections = rawText.split('||');
-    const todayData = sections[0];
-    const historyEntries = sections.slice(1);
-
-    // Parse today's data
-    const parts = todayData.split('|');
-    if (parts.length < 8) return;
-
-    const stats = {};
-    for (let i = 0; i < 7; i++) {
-        const [key, val] = parts[i].split('=');
-        stats[key] = val;
-    }
-
-    // Parse sparse histogram into 100-element array
-    const buckets1ms = new Array(100).fill(0);
-    const histData = parts.slice(7).join('|');
-    if (histData) {
-        histData.split(',').forEach(entry => {
-            const [idx, count] = entry.split(':').map(Number);
-            if (!isNaN(idx) && !isNaN(count) && idx < 100) {
-                buckets1ms[idx] = count;
-            }
-        });
-    }
-
-    // Aggregate into 5ms display buckets (0-4, 5-9, ..., 45-49)
-    const NUM_DISPLAY_BUCKETS = 20;
-    const displayBuckets = [];
-    for (let i = 0; i < NUM_DISPLAY_BUCKETS; i++) {
-        let sum = 0;
-        for (let j = i * 5; j < (i + 1) * 5 && j < 100; j++) {
-            sum += buckets1ms[j];
-        }
-        displayBuckets.push(sum);
-    }
-
-    const maxCount = Math.max(...displayBuckets, 1);
-    const logMax = Math.log10(maxCount + 1);
-
-    // Build HTML
-    const BAR_COLOR = '#3498db';
-    const S = 'font-family:monospace;color:#ccc;';
-
-    let html = '<div style="padding:4px 0">';
-    html += `<div style="${S}font-size:0.85em;margin-bottom:6px">`;
-    html += `<b>Today:</b> n=${stats.n} &nbsp; nonzero=${stats.nz} &nbsp; `;
-    html += `p90=${stats.p90}ms &nbsp; p95=${stats.p95}ms &nbsp; p99=${stats.p99}ms &nbsp; p99.9=${stats.p999}ms &nbsp; max=${stats.p100}ms`;
-    html += '</div>';
-
-    html += `<div style="${S}font-size:0.7em;color:#888;margin-bottom:2px">(log scale)</div>`;
-
-    displayBuckets.forEach((count, i) => {
-        const label = String(i * 5).padStart(2, ' ') + '-' + String(i * 5 + 4) + 'ms';
-        const pct = count > 0 ? (Math.log10(count + 1) / logMax * 100) : 0;
-        html += `<div style="display:flex;align-items:center;margin:1px 0;${S}font-size:0.8em">`;
-        html += `<span style="width:60px;text-align:right;margin-right:6px">${label}</span>`;
-        html += `<div style="flex:1;background:#333;height:14px;border-radius:2px;overflow:hidden">`;
-        html += `<div style="width:${pct}%;height:100%;background:${BAR_COLOR};border-radius:2px;transition:width 0.3s"></div>`;
-        html += `</div>`;
-        html += `<span style="width:50px;text-align:right;margin-left:6px">${count}</span>`;
-        html += '</div>';
-    });
-
-    // Daily history table
-    if (historyEntries.length > 0) {
-        html += `<div style="margin-top:10px;border-top:1px solid #555;padding-top:6px">`;
-        html += `<div style="${S}font-size:0.85em;margin-bottom:4px"><b>Previous Days</b></div>`;
-        html += `<table style="${S}font-size:0.75em;border-collapse:collapse;width:100%">`;
-        html += '<thead><tr style="border-bottom:1px solid #555">';
-        html += '<th style="text-align:left;padding:2px 8px">Day</th>';
-        html += '<th style="text-align:right;padding:2px 8px">n</th>';
-        html += '<th style="text-align:right;padding:2px 8px">nonzero</th>';
-        html += '<th style="text-align:right;padding:2px 8px">p90</th>';
-        html += '<th style="text-align:right;padding:2px 8px">p95</th>';
-        html += '<th style="text-align:right;padding:2px 8px">p99</th>';
-        html += '<th style="text-align:right;padding:2px 8px">p99.9</th>';
-        html += '<th style="text-align:right;padding:2px 8px">max</th>';
-        html += '</tr></thead><tbody>';
-
-        historyEntries.forEach((entry, i) => {
-            const vals = entry.split(',');
-            if (vals.length >= 7) {
-                const dayLabel = i === 0 ? 'Yesterday' : `${i + 1}d ago`;
-                html += `<tr style="border-bottom:1px solid #333">`;
-                html += `<td style="padding:2px 8px">${dayLabel}</td>`;
-                html += `<td style="text-align:right;padding:2px 8px">${vals[0]}</td>`;
-                html += `<td style="text-align:right;padding:2px 8px">${vals[1]}</td>`;
-                html += `<td style="text-align:right;padding:2px 8px">${vals[2]}ms</td>`;
-                html += `<td style="text-align:right;padding:2px 8px">${vals[3]}ms</td>`;
-                html += `<td style="text-align:right;padding:2px 8px">${vals[4]}ms</td>`;
-                html += `<td style="text-align:right;padding:2px 8px">${vals[5]}ms</td>`;
-                html += `<td style="text-align:right;padding:2px 8px">${vals[6]}ms</td>`;
-                html += '</tr>';
-            }
-        });
-
-        html += '</tbody></table></div>';
-    }
-
-
-
-    html += '</div>';
-    containerSpan.innerHTML = html;
-}
 
 // re-draw the label every time it is updated
 const masterObserver = new MutationObserver((mutations) => {
@@ -300,15 +187,6 @@ const masterObserver = new MutationObserver((mutations) => {
     if (label && !label.querySelector('canvas')) {
         convertToTable(label);
     }
-
-    // Jitter histogram - find span whose text matches the data format
-    document.querySelectorAll('.card span[id^="l"]').forEach(span => {
-        if (span.textContent.includes('|') && span.textContent.includes('n=')) {
-            if (!span.querySelector('div')) {
-                convertToHistogram(span);
-            }
-        }
-    });
 });
 
 // Start observing the entire DOM

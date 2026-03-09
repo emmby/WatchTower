@@ -33,7 +33,6 @@
 #include "include/DCF77Signal.h"
 #include "include/MSFSignal.h"
 #include "include/JJYSignal.h"
-#include "include/TransitionStats.h"
 #include "include/WebUI.h"
 
 // Flip to false to disable the built-in web ui.
@@ -70,17 +69,17 @@ Preferences preferences;
 bool logicValue = 0; // TODO rename
 unsigned long lastSync = 0;
 bool networkSyncEnabled = true;
-TransitionStats transitionStats;
-bool pendingStatsLog = false;
 
-// --- Signal Generation Architecture ---
+
+// --- Signal Generation ---
 // The signal is generated in two parts:
-//  1. loop() encodes the current minute's 60-bit frame into a broadcast[] buffer
+//  1. loop() encodes the current minute's 60-bit frame into a broadcast[60] buffer
 //     using the signal generator (WWVB, DCF77, MSF, or JJY). This involves
-//     timezone lookups and DST calculations that are too heavy for an ISR.
+//     timezone lookups and daylight savings calculations that are too heavy for an
+//     interrupt service routine (ISR).
 //  2. A high-priority esp_timer callback (onSignalTimer, every 1ms) reads the
-//     pre-computed broadcast buffer, determines the correct PWM level for the
-//     current RTC time, and writes it to the antenna pin.
+//     pre-computed broadcast buffer, determines the correct pulse-width modulation (PWM)
+//     level for the current time, and writes it to the antenna pin.
 // This ensures the PWM output is always on time, even when WiFi, ESPUI, or
 // other background tasks delay loop(). A double-buffer is used so the timer
 // always reads from a fully-written buffer.
@@ -275,8 +274,6 @@ void loop() {
             inactive[s] = signalGenerator->getSymbolForSecond(s);
         }
         activeBroadcast = inactive;  // atomic pointer swap
-        transitionStats.onMinuteBoundary(buf_now_local.tm_hour, buf_now_local.tm_min);
-        pendingStatsLog = transitionStats.getTotalCount() > 0;
     }
 
 
@@ -284,8 +281,6 @@ void loop() {
   if( transitionOccurred ) {
     transitionOccurred = false;
     unsigned long usec = lastTransitionUsec;
-    int sec = lastTransitionSecond;
-    transitionStats.recordTransition(usec, sec);
 
     statusLED.setTransmitting(logicValue);
 
@@ -307,22 +302,11 @@ void loop() {
     }
     Serial.printf("%s [last sync %s]: %s\n",timeStringBuff2, lastSyncStringBuff, logicValue ? "1" : "0");
 
-    if (pendingStatsLog) {
-        pendingStatsLog = false;
-        Serial.printf("[TransitionStats] n=%lu nonzero=%lu p90=%dms p95=%dms p99=%dms p999=%dms p100=%dms\n",
-            transitionStats.getTotalCount(),
-            transitionStats.getNonZeroCount(),
-            transitionStats.getPercentile(90),
-            transitionStats.getPercentile(95),
-            transitionStats.getPercentile(99),
-            transitionStats.getPermille(999),
-            transitionStats.getPercentile(100));
-    }
 
     static int prevSecond = -1;
     if( ENABLE_WEB_UI && prevSecond != buf_now_utc.tm_sec ) {
         prevSecond = buf_now_utc.tm_sec;
-        webUI.update(buf_now_local, buf_now_utc, lastSync, activeBroadcast, transitionStats);
+        webUI.update(buf_now_local, buf_now_utc, lastSync, activeBroadcast);
     }
 
     // Check for stale sync (24 hours)

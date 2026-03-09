@@ -342,74 +342,6 @@ void test_signal_switching(void) {
     TEST_ASSERT_EQUAL(60000, last_ledc_freq);
 }
 
-void test_transition_stats_perfect_alignment(void) {
-    TransitionStats stats;
-    stats.recordTransition(200000);        // 200ms, 200000%100000=0
-    stats.recordTransition(500000);        // 500ms, 500000%100000=0
-    stats.recordTransition(800000);        // 800ms, 800000%100000=0
-    
-    TEST_ASSERT_EQUAL(3, stats.getTotalCount());
-    TEST_ASSERT_EQUAL(0, stats.getNonZeroCount());
-    TEST_ASSERT_EQUAL(3, stats.getHistogramCount(0));
-}
-
-void test_transition_stats_jitter(void) {
-    TransitionStats stats;
-    stats.recordTransition(200500);        // 200.5ms, 500%100000=500us -> 0ms bucket
-    stats.recordTransition(502500);        // 502.5ms, 2500us -> 2ms bucket
-    stats.recordTransition(807000);        // 807ms, 7000us -> 7ms bucket
-    
-    TEST_ASSERT_EQUAL(3, stats.getTotalCount());
-    TEST_ASSERT_EQUAL(2, stats.getNonZeroCount());
-    TEST_ASSERT_EQUAL(1, stats.getHistogramCount(0)); // 0ms
-    TEST_ASSERT_EQUAL(1, stats.getHistogramCount(2)); // 2ms
-    TEST_ASSERT_EQUAL(1, stats.getHistogramCount(7)); // 7ms
-}
-
-void test_transition_stats_independent_measurements(void) {
-    TransitionStats stats;
-    stats.recordTransition(211000);        // 11ms jitter
-    stats.recordTransition(500000);        // 0ms jitter
-    
-    TEST_ASSERT_EQUAL(2, stats.getTotalCount());
-    TEST_ASSERT_EQUAL(1, stats.getHistogramCount(11));
-    TEST_ASSERT_EQUAL(1, stats.getHistogramCount(0));
-}
-
-void test_transition_stats_average(void) {
-    TransitionStats stats;
-    stats.recordTransition(210000);        // 10ms jitter
-    stats.recordTransition(520000);        // 20ms jitter
-    stats.recordTransition(830000);        // 30ms jitter
-    
-    TEST_ASSERT_EQUAL(3, stats.getNonZeroCount());
-}
-
-void test_transition_stats_midnight_reset(void) {
-    TransitionStats stats;
-    stats.recordTransition(200000);
-    stats.recordTransition(503000);
-    TEST_ASSERT_EQUAL(2, stats.getTotalCount());
-    
-    stats.onMinuteBoundary(0, 0);
-    TEST_ASSERT_EQUAL(0, stats.getTotalCount());
-    // Previous day's stats should be saved to history
-    TEST_ASSERT_EQUAL(1, stats.getHistoryCount());
-    TEST_ASSERT_EQUAL(2, stats.getHistory(0).n);
-    TEST_ASSERT_TRUE(stats.getHistory(0).valid);
-    
-    stats.recordTransition(200000);
-    stats.onMinuteBoundary(0, 0); // should not reset again
-    TEST_ASSERT_EQUAL(1, stats.getTotalCount());
-    TEST_ASSERT_EQUAL(1, stats.getHistoryCount()); // still 1, no new reset
-    
-    stats.onMinuteBoundary(0, 1);
-    stats.onMinuteBoundary(0, 0);
-    TEST_ASSERT_EQUAL(0, stats.getTotalCount());
-    TEST_ASSERT_EQUAL(2, stats.getHistoryCount()); // now 2 days of history
-    TEST_ASSERT_EQUAL(1, stats.getHistory(0).n);   // most recent day
-    TEST_ASSERT_EQUAL(2, stats.getHistory(1).n);   // day before
-}
 
 int main(int argc, char **argv) {
     UNITY_BEGIN();
@@ -422,11 +354,6 @@ int main(int argc, char **argv) {
     RUN_TEST(test_jjy_signal);
     RUN_TEST(test_msf_signal);
     RUN_TEST(test_signal_switching);
-    RUN_TEST(test_transition_stats_perfect_alignment);
-    RUN_TEST(test_transition_stats_jitter);
-    RUN_TEST(test_transition_stats_independent_measurements);
-    RUN_TEST(test_transition_stats_average);
-    RUN_TEST(test_transition_stats_midnight_reset);
     UNITY_END();
     return 0;
 }

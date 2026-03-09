@@ -11,7 +11,7 @@
 #include "include/DCF77Signal.h"
 #include "include/MSFSignal.h"
 #include "include/JJYSignal.h"
-#include "include/TransitionStats.h"
+
 
 // Encapsulates all ESPUI web dashboard setup and per-second updates.
 // Keeps the UI plumbing out of WatchTower.ino so the main sketch
@@ -77,8 +77,7 @@ public:
         ESPUI.setPanelWide(_ui_broadcast, true);
         ESPUI.setElementStyle(_ui_broadcast, "font-family: monospace");
 
-        _ui_jitter = ESPUI.label("Transition Jitter", ControlColor::Wetasphalt, "Collecting...");
-        ESPUI.setPanelWide(_ui_jitter, true);
+
 
         ESPUI.setCustomJS(customJS);
 
@@ -92,8 +91,7 @@ public:
         const struct tm& local,
         const struct tm& utc,
         unsigned long lastSync,
-        volatile const TimeCodeSymbol* broadcast,
-        TransitionStats& stats
+        volatile const TimeCodeSymbol* broadcast
     ) {
         char buf[62];
 
@@ -144,10 +142,6 @@ public:
             ESPUI.print(_ui_last_sync, buf);
         }
 
-        // Jitter histogram
-        char jitterBuf[512];
-        stats.formatForUI(jitterBuf, sizeof(jitterBuf));
-        ESPUI.print(_ui_jitter, jitterBuf);
     }
 
 private:
@@ -184,7 +178,7 @@ public:
     uint16_t _ui_network_sync_switch;
     uint16_t _ui_manual_date, _ui_manual_time;
     uint16_t _ui_signal_select;
-    uint16_t _ui_jitter;
+
 
     static void _onManualTime(Control* sender, int value) {
         if (_instance) _instance->handleManualTime(sender, value);
