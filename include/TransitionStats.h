@@ -24,7 +24,6 @@ public:
     struct DailySummary {
         unsigned long n;
         unsigned long nz;
-        float avg;
         int p90;
         int p95;
         int p99;
@@ -53,7 +52,6 @@ public:
         
         histogram_[bucket]++;
         totalCount_++;
-        jitterSumMs_ += jitterMs;
         if (jitterMs > 0) {
             nonZeroCount_++;
         }
@@ -75,7 +73,6 @@ public:
                 }
                 history_[0].n = totalCount_;
                 history_[0].nz = nonZeroCount_;
-                history_[0].avg = getAverageJitter();
                 history_[0].p90 = getPercentile(90);
                 history_[0].p95 = getPercentile(95);
                 history_[0].p99 = getPercentile(99);
@@ -132,12 +129,6 @@ public:
 
     unsigned long getNonZeroCount() const { return nonZeroCount_; }
     unsigned long getTotalCount() const { return totalCount_; }
-    
-    /** @return average jitter in milliseconds */
-    float getAverageJitter() const {
-        if (totalCount_ == 0) return 0.0f;
-        return (float)jitterSumMs_ / totalCount_;
-    }
 
     unsigned long getHistogramCount(int bucket) const {
         if (bucket < 0 || bucket >= NUM_BUCKETS) return 0;
@@ -153,8 +144,8 @@ public:
      * Only nonzero buckets are included. History entries separated by ||.
      */
     int formatForUI(char* buf, int bufSize) const {
-        int pos = snprintf(buf, bufSize, "n=%lu|nz=%lu|avg=%.1f|p90=%d|p95=%d|p99=%d|p999=%d|p100=%d|",
-            totalCount_, nonZeroCount_, getAverageJitter(),
+        int pos = snprintf(buf, bufSize, "n=%lu|nz=%lu|p90=%d|p95=%d|p99=%d|p999=%d|p100=%d|",
+            totalCount_, nonZeroCount_,
             getPercentile(90), getPercentile(95), getPercentile(99), getPermille(999),
             getPercentile(100));
         
@@ -171,8 +162,8 @@ public:
         
         // Append daily history
         for (int d = 0; d < historyCount_ && pos < bufSize - 1; d++) {
-            pos += snprintf(buf + pos, bufSize - pos, "||%lu,%lu,%.1f,%d,%d,%d,%d,%d",
-                history_[d].n, history_[d].nz, history_[d].avg,
+            pos += snprintf(buf + pos, bufSize - pos, "||%lu,%lu,%d,%d,%d,%d,%d",
+                history_[d].n, history_[d].nz,
                 history_[d].p90, history_[d].p95, history_[d].p99, history_[d].p999,
                 history_[d].p100);
         }
@@ -185,7 +176,6 @@ public:
         }
         totalCount_ = 0;
         nonZeroCount_ = 0;
-        jitterSumMs_ = 0;
         resetThisMinute_ = false;
     }
 
@@ -193,7 +183,6 @@ private:
     unsigned long histogram_[NUM_BUCKETS];
     unsigned long totalCount_;
     unsigned long nonZeroCount_;
-    unsigned long jitterSumMs_;
     bool resetThisMinute_;
     DailySummary history_[HISTORY_DAYS];
     int historyCount_;

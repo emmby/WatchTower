@@ -355,7 +355,6 @@ void test_transition_stats_perfect_alignment(void) {
     
     TEST_ASSERT_EQUAL(3, stats.getTotalCount());
     TEST_ASSERT_EQUAL(0, stats.getNonZeroCount());
-    TEST_ASSERT_FLOAT_WITHIN(0.001, 0.0, stats.getAverageJitter());
     TEST_ASSERT_EQUAL(3, stats.getHistogramCount(0));
 }
 
@@ -388,7 +387,6 @@ void test_transition_stats_average(void) {
     stats.recordTransition(520000);        // 20ms jitter
     stats.recordTransition(830000);        // 30ms jitter
     
-    TEST_ASSERT_FLOAT_WITHIN(0.01, 20.0, stats.getAverageJitter());
     TEST_ASSERT_EQUAL(3, stats.getNonZeroCount());
 }
 

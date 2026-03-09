@@ -496,10 +496,9 @@ void loop() {
 
     if (pendingStatsLog) {
         pendingStatsLog = false;
-        Serial.printf("[TransitionStats] n=%lu nonzero=%lu avg=%.1fms p90=%dms p95=%dms p99=%dms p999=%dms p100=%dms\n",
+        Serial.printf("[TransitionStats] n=%lu nonzero=%lu p90=%dms p95=%dms p99=%dms p999=%dms p100=%dms\n",
             transitionStats.getTotalCount(),
             transitionStats.getNonZeroCount(),
-            transitionStats.getAverageJitter(),
             transitionStats.getPercentile(90),
             transitionStats.getPercentile(95),
             transitionStats.getPercentile(99),
