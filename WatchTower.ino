@@ -377,7 +377,7 @@ void loop() {
             buf_tomorrow_start.tm_isdst
         );
         clearBroadcastValues();
-        transitionStats.onMinuteBoundary(buf_now_utc.tm_hour, buf_now_utc.tm_min);
+        transitionStats.onMinuteBoundary(buf_now_local.tm_hour, buf_now_local.tm_min);
         pendingStatsLog = transitionStats.getTotalCount() > 0;
     }
     TimeCodeSymbol bit = signalGenerator->getSymbolForSecond(buf_now_utc.tm_sec);
@@ -388,7 +388,7 @@ void loop() {
   // --- UI UPDATE LOGIC ---
   if( logicValue != prevLogicValue ) {
     ledcWrite(PIN_ANTENNA, dutyCycle(logicValue));  // Update the duty cycle of the PWM
-    transitionStats.recordTransition(now.tv_usec);
+    transitionStats.recordTransition(now.tv_usec, buf_now_utc.tm_sec);
 
     // light up the pixel if desired
     if( pixel ) {
@@ -419,13 +419,15 @@ void loop() {
 
     if (pendingStatsLog) {
         pendingStatsLog = false;
-        Serial.printf("[TransitionStats] n=%lu nonzero=%lu avg=%.1fms p90=%dms p95=%dms p99=%dms frames=%lu nzFrames=%lu\n",
+        Serial.printf("[TransitionStats] n=%lu nonzero=%lu avg=%.1fms p90=%dms p95=%dms p99=%dms p999=%dms p100=%dms frames=%lu nzFrames=%lu\n",
             transitionStats.getTotalCount(),
             transitionStats.getNonZeroCount(),
             transitionStats.getAverageJitter(),
             transitionStats.getPercentile(90),
             transitionStats.getPercentile(95),
             transitionStats.getPercentile(99),
+            transitionStats.getPermille(999),
+            transitionStats.getPercentile(100),
             transitionStats.getFrameCount(),
             transitionStats.getNonZeroFrameCount());
     }
@@ -496,7 +498,7 @@ void loop() {
         }
 
         // Jitter histogram
-        char jitterBuf[512];
+        char jitterBuf[1024];
         transitionStats.formatForUI(jitterBuf, sizeof(jitterBuf));
         ESPUI.print(ui_jitter, jitterBuf);
     }
