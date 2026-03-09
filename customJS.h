@@ -178,15 +178,91 @@ function convertToTable(containerSpan) {
     containerSpan.prepend(canvas);
 }
 
+/**
+ * Converts a jitter data label into a histogram visualization.
+ * Data format: "n=N|nz=NZ|avg=A|p90=P|p95=P|p99=P|bucket:count,bucket:count,..."
+ */
+function convertToHistogram(containerSpan) {
+    const rawText = containerSpan.textContent.trim();
+    if (!rawText.includes('|')) return;
+
+    // Parse the data string
+    const parts = rawText.split('|');
+    if (parts.length < 7) return;
+
+    const stats = {};
+    for (let i = 0; i < 6; i++) {
+        const [key, val] = parts[i].split('=');
+        stats[key] = val;
+    }
+
+    // Parse sparse histogram into 100-element array
+    const buckets1ms = new Array(100).fill(0);
+    const histData = parts.slice(6).join('|'); // rejoin in case of stray pipes
+    if (histData) {
+        histData.split(',').forEach(entry => {
+            const [idx, count] = entry.split(':').map(Number);
+            if (!isNaN(idx) && !isNaN(count) && idx < 100) {
+                buckets1ms[idx] = count;
+            }
+        });
+    }
+
+    // Aggregate into 5ms display buckets (0-4, 5-9, ..., 45-49)
+    const NUM_DISPLAY_BUCKETS = 10;
+    const displayBuckets = [];
+    for (let i = 0; i < NUM_DISPLAY_BUCKETS; i++) {
+        let sum = 0;
+        for (let j = i * 5; j < (i + 1) * 5 && j < 100; j++) {
+            sum += buckets1ms[j];
+        }
+        displayBuckets.push(sum);
+    }
+
+    const maxCount = Math.max(...displayBuckets, 1);
+
+    // Build HTML
+    const BAR_COLOR = '#3498db';
+    const LABEL_STYLE = 'color:#ccc;font-size:0.85em;font-family:monospace;';
+
+    let html = '<div style="padding:4px 0">';
+    html += `<div style="${LABEL_STYLE}margin-bottom:6px">`;
+    html += `<b>n=${stats.n}</b> &nbsp; nonzero=${stats.nz} &nbsp; avg=${stats.avg}ms &nbsp; `;
+    html += `p90=${stats.p90}ms &nbsp; p95=${stats.p95}ms &nbsp; p99=${stats.p99}ms`;
+    html += '</div>';
+
+    displayBuckets.forEach((count, i) => {
+        const label = String(i * 5).padStart(2, ' ') + '-' + String(i * 5 + 4) + 'ms';
+        const pct = maxCount > 0 ? (count / maxCount * 100) : 0;
+        html += '<div style="display:flex;align-items:center;margin:1px 0;font-family:monospace;font-size:0.8em;color:#ccc">';
+        html += `<span style="width:60px;text-align:right;margin-right:6px">${label}</span>`;
+        html += `<div style="flex:1;background:#333;height:14px;border-radius:2px;overflow:hidden">`;
+        html += `<div style="width:${pct}%;height:100%;background:${BAR_COLOR};border-radius:2px;transition:width 0.3s"></div>`;
+        html += `</div>`;
+        html += `<span style="width:50px;text-align:right;margin-left:6px">${count}</span>`;
+        html += '</div>';
+    });
+
+    html += '</div>';
+    containerSpan.innerHTML = html;
+}
+
 // re-draw the label every time it is updated
 const masterObserver = new MutationObserver((mutations) => {
+    // Waveform visualization
     const label = document.getElementById('l1');
-    if (!label) return;
+    if (label && !label.querySelector('canvas')) {
+        convertToTable(label);
+    }
 
-    // If it contains the table we added, ignore this update (it was us!)
-    if (label.querySelector('canvas')) return;    
-
-    convertToTable(label);
+    // Jitter histogram - find span whose text matches the data format
+    document.querySelectorAll('.card span[id^="l"]').forEach(span => {
+        if (span.textContent.includes('|') && span.textContent.includes('n=')) {
+            if (!span.querySelector('div')) {
+                convertToHistogram(span);
+            }
+        }
+    });
 });
 
 // Start observing the entire DOM

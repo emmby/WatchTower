@@ -85,6 +85,29 @@ public:
         return histogram_[bucket];
     }
 
+    /**
+     * Format stats + sparse histogram for ESPUI transfer.
+     * Format: "n=N|nz=NZ|avg=A|p90=P|p95=P|p99=P|bucket:count,bucket:count,..."
+     * Only nonzero buckets are included.
+     */
+    int formatForUI(char* buf, int bufSize) const {
+        int pos = snprintf(buf, bufSize, "n=%lu|nz=%lu|avg=%.1f|p90=%d|p95=%d|p99=%d|",
+            totalCount_, nonZeroCount_, getAverageJitter(),
+            getPercentile(90), getPercentile(95), getPercentile(99));
+        
+        bool first = true;
+        for (int i = 0; i < NUM_BUCKETS && pos < bufSize - 1; i++) {
+            if (histogram_[i] > 0) {
+                if (!first) {
+                    pos += snprintf(buf + pos, bufSize - pos, ",");
+                }
+                pos += snprintf(buf + pos, bufSize - pos, "%d:%lu", i, histogram_[i]);
+                first = false;
+            }
+        }
+        return pos;
+    }
+
     void reset() {
         for (int i = 0; i < NUM_BUCKETS; i++) {
             histogram_[i] = 0;

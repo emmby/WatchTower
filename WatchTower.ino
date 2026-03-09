@@ -99,6 +99,7 @@ uint16_t ui_network_sync_switch;
 uint16_t ui_manual_date;
 uint16_t ui_manual_time;
 uint16_t ui_signal_select;
+uint16_t ui_jitter;
 
 String manualDate = "";
 String manualTime = "";
@@ -281,6 +282,10 @@ void setup() {
 
   ESPUI.setPanelWide(ui_broadcast, true);
   ESPUI.setElementStyle(ui_broadcast, "font-family: monospace");
+
+  ui_jitter = ESPUI.label("Transition Jitter", ControlColor::Wetasphalt, "Collecting...");
+  ESPUI.setPanelWide(ui_jitter, true);
+
   ESPUI.setCustomJS(customJS);
 
   // You may disable the internal webserver by commenting out this line
@@ -487,6 +492,11 @@ void loop() {
             snprintf(buf, sizeof(buf), "%lus ago", secondsSinceSync);
             ESPUI.print(ui_last_sync, buf);
         }
+
+        // Jitter histogram
+        char jitterBuf[512];
+        transitionStats.formatForUI(jitterBuf, sizeof(jitterBuf));
+        ESPUI.print(ui_jitter, jitterBuf);
     }
 
     // Check for stale sync (24 hours)

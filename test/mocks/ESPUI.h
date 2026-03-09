@@ -2,7 +2,7 @@
 #include <Arduino.h>
 
 enum Verbosity { Quiet };
-enum ControlColor { Sunflower, Turquoise, Emerald, Peterriver, Carrot, Alizarin, Dark, Wisteria };
+enum ControlColor { Sunflower, Turquoise, Emerald, Peterriver, Carrot, Alizarin, Dark, Wisteria, Wetasphalt };
 enum class ControlType { Label, Button, Switch, Option, Select, Text, Number, Slider, Pad, Graph };
 
 struct Control {
