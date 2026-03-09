@@ -84,6 +84,7 @@ unsigned long lastSync = 0;
 TimeCodeSymbol broadcast[60];
 bool networkSyncEnabled = true;
 TransitionStats transitionStats;
+bool pendingStatsLog = false;
 
 // ESPUI Interface IDs
 uint16_t ui_time;
@@ -370,13 +371,11 @@ void loop() {
             buf_today_start.tm_isdst,
             buf_tomorrow_start.tm_isdst
         );
-    }
-
-    TimeCodeSymbol bit = signalGenerator->getSymbolForSecond(buf_now_utc.tm_sec);
-
-    if(buf_now_utc.tm_sec == 0) {
         clearBroadcastValues();
+        transitionStats.checkMidnightReset(buf_now_utc.tm_hour, buf_now_utc.tm_min);
+        pendingStatsLog = transitionStats.getTotalCount() > 0;
     }
+    TimeCodeSymbol bit = signalGenerator->getSymbolForSecond(buf_now_utc.tm_sec);
     broadcast[buf_now_utc.tm_sec] = bit;
 
     logicValue = signalGenerator->getLevelForTimeCodeSymbol(bit, now.tv_usec/1000);
@@ -384,7 +383,7 @@ void loop() {
   // --- UI UPDATE LOGIC ---
   if( logicValue != prevLogicValue ) {
     ledcWrite(PIN_ANTENNA, dutyCycle(logicValue));  // Update the duty cycle of the PWM
-    transitionStats.recordTransition(micros());
+    transitionStats.recordTransition(now.tv_usec);
 
     // light up the pixel if desired
     if( pixel ) {
@@ -413,11 +412,8 @@ void loop() {
     }
     Serial.printf("%s [last sync %s]: %s\n",timeStringBuff2, lastSyncStringBuff, logicValue ? "1" : "0");
 
-    // Periodic transition timing stats
-    transitionStats.checkMidnightReset(buf_now_utc.tm_hour, buf_now_utc.tm_min);
-    static unsigned long lastStatsLog = 0;
-    if (millis() - lastStatsLog >= 60000) {
-        lastStatsLog = millis();
+    if (pendingStatsLog) {
+        pendingStatsLog = false;
         Serial.printf("[TransitionStats] n=%lu nonzero=%lu avg=%.1fms p90=%dms p95=%dms p99=%dms\n",
             transitionStats.getTotalCount(),
             transitionStats.getNonZeroCount(),

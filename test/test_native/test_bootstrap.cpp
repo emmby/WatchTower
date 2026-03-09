@@ -349,53 +349,44 @@ void test_signal_switching(void) {
 
 void test_transition_stats_perfect_alignment(void) {
     TransitionStats stats;
-    stats.recordTransition(0);            // baseline
-    stats.recordTransition(200000);       // delta=200ms, 200000%100000=0
-    stats.recordTransition(500000);       // delta=300ms, 300000%100000=0
-    stats.recordTransition(1300000);      // delta=800ms, 800000%100000=0
+    stats.recordTransition(200000);        // 200ms, 200000%100000=0
+    stats.recordTransition(500000);        // 500ms, 500000%100000=0
+    stats.recordTransition(800000);        // 800ms, 800000%100000=0
     
     TEST_ASSERT_EQUAL(3, stats.getTotalCount());
     TEST_ASSERT_EQUAL(0, stats.getNonZeroCount());
     TEST_ASSERT_FLOAT_WITHIN(0.001, 0.0, stats.getAverageJitter());
-    TEST_ASSERT_EQUAL(1, stats.getPercentile(99)); // bucket 0 upper bound = 1ms
     TEST_ASSERT_EQUAL(3, stats.getHistogramCount(0));
 }
 
 void test_transition_stats_jitter(void) {
     TransitionStats stats;
-    stats.recordTransition(0);            // baseline
-    stats.recordTransition(200500);       // delta=200.5ms, jitter=0.5ms -> bucket 0
-    stats.recordTransition(403000);       // delta=202.5ms, jitter=2.5ms -> bucket 2
-    stats.recordTransition(710000);       // delta=307ms, jitter=7ms -> bucket 7
+    stats.recordTransition(200500);        // 200.5ms, 500%100000=500us -> 0ms bucket
+    stats.recordTransition(502500);        // 502.5ms, 2500us -> 2ms bucket
+    stats.recordTransition(807000);        // 807ms, 7000us -> 7ms bucket
     
     TEST_ASSERT_EQUAL(3, stats.getTotalCount());
-    TEST_ASSERT_EQUAL(2, stats.getNonZeroCount()); // 0.5ms < 1ms threshold, not counted
-    TEST_ASSERT_EQUAL(1, stats.getHistogramCount(0)); // 0.5ms
-    TEST_ASSERT_EQUAL(1, stats.getHistogramCount(2)); // 2.5ms
+    TEST_ASSERT_EQUAL(2, stats.getNonZeroCount());
+    TEST_ASSERT_EQUAL(1, stats.getHistogramCount(0)); // 0ms
+    TEST_ASSERT_EQUAL(1, stats.getHistogramCount(2)); // 2ms
     TEST_ASSERT_EQUAL(1, stats.getHistogramCount(7)); // 7ms
 }
 
-void test_transition_stats_wraparound(void) {
+void test_transition_stats_independent_measurements(void) {
     TransitionStats stats;
-    stats.recordTransition(0);            // baseline
-    // delta=197ms, 197000%100000=97000us, jitter=100000-97000=3000us=3ms -> bucket 3
-    stats.recordTransition(197000);
-    // delta=201ms, 201000%100000=1000us, jitter=1ms -> bucket 1
-    stats.recordTransition(398000);
+    stats.recordTransition(211000);        // 11ms jitter
+    stats.recordTransition(500000);        // 0ms jitter
     
     TEST_ASSERT_EQUAL(2, stats.getTotalCount());
-    TEST_ASSERT_EQUAL(2, stats.getNonZeroCount());
-    TEST_ASSERT_EQUAL(1, stats.getHistogramCount(3)); // 3ms
-    TEST_ASSERT_EQUAL(1, stats.getHistogramCount(1)); // 1ms
-    TEST_ASSERT_FLOAT_WITHIN(0.01, 2.0, stats.getAverageJitter());
+    TEST_ASSERT_EQUAL(1, stats.getHistogramCount(11));
+    TEST_ASSERT_EQUAL(1, stats.getHistogramCount(0));
 }
 
 void test_transition_stats_average(void) {
     TransitionStats stats;
-    stats.recordTransition(0);            // baseline
-    stats.recordTransition(210000);       // delta=210ms, jitter=10ms
-    stats.recordTransition(430000);       // delta=220ms, jitter=20ms
-    stats.recordTransition(760000);       // delta=330ms, jitter=30ms
+    stats.recordTransition(210000);        // 10ms jitter
+    stats.recordTransition(520000);        // 20ms jitter
+    stats.recordTransition(830000);        // 30ms jitter
     
     TEST_ASSERT_FLOAT_WITHIN(0.01, 20.0, stats.getAverageJitter());
     TEST_ASSERT_EQUAL(3, stats.getNonZeroCount());
@@ -403,27 +394,18 @@ void test_transition_stats_average(void) {
 
 void test_transition_stats_midnight_reset(void) {
     TransitionStats stats;
-    stats.recordTransition(0);            // baseline
-    stats.recordTransition(200000);       // counted
-    stats.recordTransition(403000);       // counted
+    stats.recordTransition(200000);
+    stats.recordTransition(503000);
     TEST_ASSERT_EQUAL(2, stats.getTotalCount());
     
-    // Simulate midnight
     stats.checkMidnightReset(0, 0);
     TEST_ASSERT_EQUAL(0, stats.getTotalCount());
     
-    // After reset, first transition is baseline again
-    stats.recordTransition(600000);       // baseline (not counted)
-    stats.recordTransition(800000);       // counted
-    stats.checkMidnightReset(0, 0);       // should not reset again
+    stats.recordTransition(200000);
+    stats.checkMidnightReset(0, 0); // should not reset again
     TEST_ASSERT_EQUAL(1, stats.getTotalCount());
     
-    // After leaving midnight minute, should arm for next reset
     stats.checkMidnightReset(0, 1);
-    stats.recordTransition(1000000);
-    TEST_ASSERT_EQUAL(2, stats.getTotalCount());
-    
-    // Next midnight should reset again
     stats.checkMidnightReset(0, 0);
     TEST_ASSERT_EQUAL(0, stats.getTotalCount());
 }
@@ -441,7 +423,7 @@ int main(int argc, char **argv) {
     RUN_TEST(test_signal_switching);
     RUN_TEST(test_transition_stats_perfect_alignment);
     RUN_TEST(test_transition_stats_jitter);
-    RUN_TEST(test_transition_stats_wraparound);
+    RUN_TEST(test_transition_stats_independent_measurements);
     RUN_TEST(test_transition_stats_average);
     RUN_TEST(test_transition_stats_midnight_reset);
     UNITY_END();

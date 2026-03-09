@@ -6,49 +6,37 @@
 /**
  * @brief Tracks how precisely signal transitions align to 100ms boundaries.
  * 
- * Every radio time signal transition should occur at an exact multiple of 100ms.
- * This class measures the "jitter" — the distance from the nearest 100ms boundary —
- * using micros() for sub-millisecond precision. Results are stored in a histogram
- * with 1ms-wide buckets (0ms, 1ms, 2ms, ..., 50ms).
+ * Every radio time signal transition should occur at an exact multiple of 100ms
+ * within each second. This class measures the "jitter" — how many microseconds
+ * past the nearest 100ms boundary the transition was detected — using the RTC
+ * microsecond value (tv_usec) directly.
  * 
+ * Results are stored in a histogram with 1ms-wide buckets (0ms–99ms).
  * Stats reset at midnight each day (UTC).
  */
 class TransitionStats {
 public:
-    static const int NUM_BUCKETS = 51;        // 0, 1, 2, ..., 50 (one per ms)
-    static const int BUCKET_WIDTH_US = 1000;  // 1ms in micros
-    static const int MAX_JITTER_US = 50000;   // 50ms in micros
-    static const unsigned long HUNDRED_MS_US = 100000; // 100ms in micros
+    static const int NUM_BUCKETS = 100;
+    static const unsigned long HUNDRED_MS_US = 100000;
 
     TransitionStats() {
         reset();
     }
 
     /**
-     * Record a transition at the given boot clock time (in microseconds).
-     * Computes the delta since the last transition, then measures
-     * how far that delta is from the nearest multiple of 100ms.
+     * Record a transition given the RTC's microsecond value (tv_usec).
+     * Jitter is computed as tv_usec % 100000, converted to milliseconds.
      */
-    void recordTransition(unsigned long currentMicros) {
-        if (!hasLastTransition_) {
-            hasLastTransition_ = true;
-            lastTransitionMicros_ = currentMicros;
-            return;
-        }
+    void recordTransition(unsigned long tvUsec) {
+        int jitterMs = (tvUsec % HUNDRED_MS_US) / 1000;
         
-        unsigned long delta = currentMicros - lastTransitionMicros_;
-        lastTransitionMicros_ = currentMicros;
-        
-        int offsetUs = delta % HUNDRED_MS_US;
-        int jitterUs = offsetUs <= MAX_JITTER_US ? offsetUs : (HUNDRED_MS_US - offsetUs);
-        
-        int bucket = jitterUs / BUCKET_WIDTH_US;
+        int bucket = jitterMs;
         if (bucket >= NUM_BUCKETS) bucket = NUM_BUCKETS - 1;
         
         histogram_[bucket]++;
         totalCount_++;
-        jitterSumUs_ += jitterUs;
-        if (jitterUs >= BUCKET_WIDTH_US) nonZeroCount_++; // 1ms+ counts as non-zero
+        jitterSumMs_ += jitterMs;
+        if (jitterMs > 0) nonZeroCount_++;
     }
 
     /**
@@ -77,7 +65,7 @@ public:
         for (int i = 0; i < NUM_BUCKETS; i++) {
             cumulative += histogram_[i];
             if (cumulative >= threshold) {
-                return i + 1; // upper bound in ms
+                return i + 1;
             }
         }
         return NUM_BUCKETS;
@@ -86,10 +74,10 @@ public:
     unsigned long getNonZeroCount() const { return nonZeroCount_; }
     unsigned long getTotalCount() const { return totalCount_; }
     
-    /** @return average jitter in milliseconds (floating point) */
+    /** @return average jitter in milliseconds */
     float getAverageJitter() const {
         if (totalCount_ == 0) return 0.0f;
-        return (float)jitterSumUs_ / totalCount_ / 1000.0f;
+        return (float)jitterSumMs_ / totalCount_;
     }
 
     unsigned long getHistogramCount(int bucket) const {
@@ -103,20 +91,16 @@ public:
         }
         totalCount_ = 0;
         nonZeroCount_ = 0;
-        jitterSumUs_ = 0;
+        jitterSumMs_ = 0;
         resetThisMinute_ = false;
-        hasLastTransition_ = false;
-        lastTransitionMicros_ = 0;
     }
 
 private:
     unsigned long histogram_[NUM_BUCKETS];
     unsigned long totalCount_;
     unsigned long nonZeroCount_;
-    unsigned long jitterSumUs_;
+    unsigned long jitterSumMs_;
     bool resetThisMinute_;
-    bool hasLastTransition_;
-    unsigned long lastTransitionMicros_;
 };
 
 #endif // TRANSITION_STATS_H
