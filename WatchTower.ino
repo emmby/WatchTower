@@ -20,6 +20,26 @@
 // - Adafruit ESP32 Feather v2
 // - Arduino Nano ESP32 (via wokwi)
 
+// ========================
+// Configuration
+// ========================
+
+// Flip to false to disable the built-in web ui.
+// You might want to do this to avoid leaving unnecessary open ports on your network.
+const bool ENABLE_WEB_UI = true;
+
+// Set this to the pin your antenna is connected on
+const int PIN_ANTENNA = 13;
+
+// Set to your timezone.
+// This is needed for computing DST if applicable
+// https://gist.github.com/alwynallan/24d96091655391107939
+const char *timezone = "PST8PDT,M3.2.0,M11.1.0"; // America/Los_Angeles
+
+// ========================
+// Includes
+// ========================
+
 #include <WiFiManager.h>
 #include "include/StatusLED.h"
 #include <SPI.h>
@@ -35,21 +55,10 @@
 #include "include/JJYSignal.h"
 #include "include/WebUI.h"
 
-// Flip to false to disable the built-in web ui.
-// You might want to do this to avoid leaving unnecessary open ports on your network.
-const bool ENABLE_WEB_UI = true;
 
-// Set this to the pin your antenna is connected on
-const int PIN_ANTENNA = 13;
-
-// Set to your timezone.
-// This is needed for computing DST if applicable
-// https://gist.github.com/alwynallan/24d96091655391107939
-// Set to your timezone.
-// This is needed for computing DST if applicable
-// https://gist.github.com/alwynallan/24d96091655391107939
-const char *timezone = "PST8PDT,M3.2.0,M11.1.0"; // America/Los_Angeles
-
+// ========================
+// Globals
+// ========================
 
 // Default to WWVB if no signal is specified
 WWVBSignal wwvb;
@@ -94,20 +103,9 @@ volatile int lastTransitionSecond = 0;
 
 esp_timer_handle_t signalTimer = nullptr;
 
-
-
-// A callback that tracks when we last sync'ed the
-// time with the ntp server
-void time_sync_notification_cb(struct timeval *tv) {
-  lastSync = millis();
-}
-
-// A callback that is called when the device
-// starts up an access point for wifi configuration.
-// This is called when the device cannot connect to wifi.
-void accesspointCallback(WiFiManager*) {
-  Serial.println("Connect to SSID: WatchTower with another device to set wifi configuration.");
-}
+// ========================
+// Helpers
+// ========================
 
 // Convert a logical bit into a PWM pulse width.
 // Returns 50% duty cycle (128) for high, 0% for low
@@ -121,7 +119,22 @@ void clearBroadcastValues(TimeCodeSymbol* buf) {
     }
 }
 
+// ========================
+// Callbacks
+// ========================
 
+// A callback that tracks when we last sync'ed the
+// time with the ntp server
+void time_sync_notification_cb(struct timeval *tv) {
+  lastSync = millis();
+}
+
+// A callback that is called when the device
+// starts up an access point for wifi configuration.
+// This is called when the device cannot connect to wifi.
+void accesspointCallback(WiFiManager*) {
+  Serial.println("Connect to SSID: WatchTower with another device to set wifi configuration.");
+}
 
 /**
  * High-priority timer callback (runs every 1ms).
@@ -144,8 +157,9 @@ void onSignalTimer(void* arg) {
     }
 }
 
-
-
+// ========================
+// Arduino Setup & Loop
+// ========================
 
 void setup() {
   Serial.begin(115200);
