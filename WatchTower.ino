@@ -81,10 +81,33 @@ MDNS mdns(udp);
 Preferences preferences;
 bool logicValue = 0; // TODO rename
 unsigned long lastSync = 0;
-TimeCodeSymbol broadcast[60];
 bool networkSyncEnabled = true;
 TransitionStats transitionStats;
 bool pendingStatsLog = false;
+
+// --- Signal Generation Architecture ---
+// The signal is generated in two parts:
+//  1. loop() encodes the current minute's 60-bit frame into a broadcast[] buffer
+//     using the signal generator (WWVB, DCF77, MSF, or JJY). This involves
+//     timezone lookups and DST calculations that are too heavy for an ISR.
+//  2. A high-priority esp_timer callback (onSignalTimer, every 1ms) reads the
+//     pre-computed broadcast buffer, determines the correct PWM level for the
+//     current RTC time, and writes it to the antenna pin.
+// This ensures the PWM output is always on time, even when WiFi, ESPUI, or
+// other background tasks delay loop(). A double-buffer is used so the timer
+// always reads from a fully-written buffer.
+TimeCodeSymbol broadcastA[60];
+TimeCodeSymbol broadcastB[60];
+volatile const TimeCodeSymbol* activeBroadcast = broadcastA;
+
+// Shared state between timer callback and loop()
+volatile bool transitionOccurred = false;
+volatile unsigned long lastTransitionUsec = 0;
+volatile int lastTransitionSecond = 0;
+
+#ifndef UNIT_TEST
+esp_timer_handle_t signalTimer = nullptr;
+#endif
 
 // ESPUI Interface IDs
 uint16_t ui_time;
@@ -158,9 +181,9 @@ static inline short dutyCycle(bool logicValue) {
   return logicValue ? (256*0.5) : 0; // 128 == 50% duty cycle
 }
 
-void clearBroadcastValues() {
-    for(int i=0; i<sizeof(broadcast)/sizeof(broadcast[0]); ++i) {
-        broadcast[i] = (TimeCodeSymbol)-1; // -1 isn't legal but that's okay, we just need an invalid value
+void clearBroadcastValues(TimeCodeSymbol* buf) {
+    for(int i=0; i<60; ++i) {
+        buf[i] = (TimeCodeSymbol)-1; // -1 isn't legal but that's okay, we just need an invalid value
     }
 }
 
@@ -183,6 +206,27 @@ void updateSignalCallback(Control *sender, int value) {
         // Update PWM frequency
         ledcDetach(PIN_ANTENNA);
         ledcAttach(PIN_ANTENNA, signalGenerator->getFrequency(), 8);
+    }
+}
+
+/**
+ * High-priority timer callback (runs every 1ms).
+ * Reads the RTC, looks up the pre-computed bit, and updates the PWM pin.
+ * This runs at higher priority than WiFi/ESPUI, eliminating network-induced jitter.
+ */
+void onSignalTimer(void* arg) {
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    int sec = now.tv_sec % 60;
+    const TimeCodeSymbol* bits = const_cast<const TimeCodeSymbol*>(activeBroadcast);
+    bool level = signalGenerator->getLevelForTimeCodeSymbol(
+        bits[sec], now.tv_usec / 1000);
+    if (level != logicValue) {
+        ledcWrite(PIN_ANTENNA, dutyCycle(level));
+        logicValue = level;
+        lastTransitionUsec = now.tv_usec;
+        lastTransitionSecond = sec;
+        transitionOccurred = true;
     }
 }
 
@@ -243,7 +287,8 @@ void setup() {
   else if (savedSignal == "JJY") signalGenerator = &jjy;
   else signalGenerator = &wwvb;
 
-  clearBroadcastValues();
+  clearBroadcastValues(broadcastA);
+  clearBroadcastValues(broadcastB);
 
   // --- ESPUI SETUP ---
   ESPUI.setVerbosity(Verbosity::Quiet);
@@ -339,6 +384,20 @@ void setup() {
     pixel->clear();  
     pixel->show();
   }
+
+  // Start the high-priority signal timer (1ms interval).
+  // This ensures PWM transitions happen on time regardless of WiFi/ESPUI activity.
+  #ifndef UNIT_TEST
+  const esp_timer_create_args_t timerArgs = {
+      .callback = onSignalTimer,
+      .arg = NULL,
+      .dispatch_method = ESP_TIMER_TASK,
+      .name = "signal_timer"
+  };
+  esp_timer_create(&timerArgs, &signalTimer);
+  esp_timer_start_periodic(signalTimer, 1000);  // 1ms = 1000us
+  Serial.println("Signal timer started (1ms interval)");
+  #endif
 }
 
 void loop() {
@@ -366,29 +425,47 @@ void loop() {
   tomorrow_start.tv_sec = ((tomorrow_start.tv_sec / 86400) + 1) * 86400; // again, close enough
   localtime_r(&tomorrow_start.tv_sec, &buf_tomorrow_start);
 
-  const bool prevLogicValue = logicValue;
-
     static int prevMinute = -1;
     if (buf_now_utc.tm_min != prevMinute) {
         prevMinute = buf_now_utc.tm_min;
+        // Write to the INACTIVE buffer, then swap
+        TimeCodeSymbol* inactive = (activeBroadcast == broadcastA) ? broadcastB : broadcastA;
+        clearBroadcastValues(inactive);
         signalGenerator->encodeMinute(
             buf_now_utc,
             buf_today_start.tm_isdst,
             buf_tomorrow_start.tm_isdst
         );
-        clearBroadcastValues();
+        for (int s = 0; s < 60; s++) {
+            inactive[s] = signalGenerator->getSymbolForSecond(s);
+        }
+        activeBroadcast = inactive;  // atomic pointer swap
         transitionStats.onMinuteBoundary(buf_now_local.tm_hour, buf_now_local.tm_min);
         pendingStatsLog = transitionStats.getTotalCount() > 0;
     }
-    TimeCodeSymbol bit = signalGenerator->getSymbolForSecond(buf_now_utc.tm_sec);
-    broadcast[buf_now_utc.tm_sec] = bit;
 
-    logicValue = signalGenerator->getLevelForTimeCodeSymbol(bit, now.tv_usec/1000);
+  // In unit test mode, no timer callback exists — compute signal inline
+  #ifdef UNIT_TEST
+  {
+    int sec = now.tv_sec % 60;
+    const TimeCodeSymbol* bits = const_cast<const TimeCodeSymbol*>(activeBroadcast);
+    bool level = signalGenerator->getLevelForTimeCodeSymbol(
+        bits[sec], now.tv_usec / 1000);
+    if (level != logicValue) {
+        logicValue = level;
+        lastTransitionUsec = now.tv_usec;
+        lastTransitionSecond = sec;
+        transitionOccurred = true;
+    }
+  }
+  #endif
 
-  // --- UI UPDATE LOGIC ---
-  if( logicValue != prevLogicValue ) {
-    ledcWrite(PIN_ANTENNA, dutyCycle(logicValue));  // Update the duty cycle of the PWM
-    transitionStats.recordTransition(now.tv_usec, buf_now_utc.tm_sec);
+  // --- HANDLE TRANSITIONS DETECTED BY TIMER CALLBACK ---
+  if( transitionOccurred ) {
+    transitionOccurred = false;
+    unsigned long usec = lastTransitionUsec;
+    int sec = lastTransitionSecond;
+    transitionStats.recordTransition(usec, sec);
 
     // light up the pixel if desired
     if( pixel ) {
@@ -457,7 +534,7 @@ void loop() {
 
         // Broadcast window
         for( int i=0; i<60; ++i ) { // TODO leap seconds
-        switch(broadcast[i]) {
+        switch(activeBroadcast[i]) {
             case TimeCodeSymbol::MARK:
                 buf[i] = 'M';
                 break;
