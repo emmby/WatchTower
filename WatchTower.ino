@@ -80,30 +80,15 @@ bool logicValue = 0; // TODO rename
 unsigned long lastSync = 0;
 bool networkSyncEnabled = true;
 const char* const ntpServer = "pool.ntp.org";
+esp_timer_handle_t signalTimer = nullptr;
 
-
-// --- Signal Generation ---
-// The signal is generated in two parts:
-//  1. loop() encodes the current minute's 60-bit frame into a broadcast[60] buffer
-//     using the signal generator (WWVB, DCF77, MSF, or JJY). This involves
-//     timezone lookups and daylight savings calculations that are too heavy for an
-//     interrupt service routine (ISR).
-//  2. A high-priority esp_timer callback (onSignalTimer, every 1ms) reads the
-//     pre-computed broadcast buffer, determines the correct pulse-width modulation (PWM)
-//     level for the current time, and writes it to the antenna pin.
-// This ensures the PWM output is always on time, even when WiFi, ESPUI, or
-// other background tasks delay loop(). A double-buffer is used so the timer
-// always reads from a fully-written buffer.
+// Shared state between timer callback and loop()
 TimeCodeSymbol broadcastA[60];
 TimeCodeSymbol broadcastB[60];
 volatile const TimeCodeSymbol* activeBroadcast = broadcastA;
-
-// Shared state between timer callback and loop()
 volatile bool transitionOccurred = false;
 volatile unsigned long lastTransitionUsec = 0;
 volatile int lastTransitionSecond = 0;
-
-esp_timer_handle_t signalTimer = nullptr;
 
 // ========================
 // Helpers
@@ -142,6 +127,18 @@ void accesspointCallback(WiFiManager*) {
  * High-priority timer callback (runs every 1ms).
  * Reads the RTC, looks up the pre-computed bit, and updates the PWM pin.
  * This runs at higher priority than WiFi/ESPUI, eliminating network-induced jitter.
+ *
+ * The signal is generated in two parts:
+ *  1. loop() encodes the current minute's 60-bit frame into a broadcast[60] buffer
+ *     using the signal generator (WWVB, DCF77, MSF, or JJY). This involves
+ *     timezone lookups and daylight savings calculations that are too heavy for an
+ *     interrupt service routine (ISR).
+ *  2. A high-priority esp_timer callback (onSignalTimer, every 1ms) reads the
+ *     pre-computed broadcast buffer, determines the correct pulse-width modulation (PWM)
+ *     level for the current time, and writes it to the antenna pin.
+ * This ensures the PWM output is always on time, even when WiFi, ESPUI, or
+ * other background tasks delay loop(). A double-buffer is used so the timer
+ * always reads from a fully-written buffer.
  */
 void onSignalTimer(void* arg) {
     struct timeval now;
