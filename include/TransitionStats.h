@@ -12,7 +12,7 @@
  * microsecond value (tv_usec) directly.
  * 
  * Results are stored in a histogram with 1ms-wide buckets (0ms–99ms).
- * Stats reset at midnight each day (UTC), with the previous day's summary
+ * Stats reset at midnight each day (local time), with the previous day's summary
  * saved to a 7-day rolling history.
  */
 class TransitionStats {
@@ -20,7 +20,6 @@ public:
     static const int NUM_BUCKETS = 100;
     static const unsigned long HUNDRED_MS_US = 100000;
     static const int HISTORY_DAYS = 7;
-    static const int MAX_ERROR_FRAMES = 20;
 
     struct DailySummary {
         unsigned long n;
@@ -31,17 +30,7 @@ public:
         int p99;
         int p999;
         int p100;
-        unsigned long frames;
-        unsigned long nzFrames;
         bool valid;
-    };
-
-    struct ErrorFrame {
-        uint8_t hour;
-        uint8_t minute;
-        uint8_t nzCount;     // nonzero transitions in this frame
-        uint8_t maxJitterMs;  // max jitter in ms
-        uint64_t errorSeconds; // bitmask of which seconds had ≥1ms jitter
     };
 
     TransitionStats() {
@@ -50,13 +39,6 @@ public:
             history_[i].valid = false;
         }
         historyCount_ = 0;
-        errorFrameCount_ = 0;
-        errorFrameHead_ = 0;
-        curFrameNzCount_ = 0;
-        curFrameMaxJitter_ = 0;
-        curFrameErrorSeconds_ = 0;
-        curFrameHour_ = 0;
-        curFrameMinute_ = 0;
     }
 
     /**
@@ -74,40 +56,14 @@ public:
         jitterSumMs_ += jitterMs;
         if (jitterMs > 0) {
             nonZeroCount_++;
-            frameHadNonZero_ = true;
-            curFrameNzCount_++;
-            if (jitterMs > curFrameMaxJitter_) curFrameMaxJitter_ = jitterMs;
-            if (second >= 0 && second < 60) {
-                curFrameErrorSeconds_ |= (1ULL << second);
-            }
         }
     }
 
     /**
-     * Called once per minute. Tracks frame counts and checks for local midnight reset.
+     * Called once per minute. Checks for local midnight reset.
      * Saves the current day's summary to rolling history before clearing.
      */
     void onMinuteBoundary(int localHour, int localMinute) {
-        // Track frame stats
-        frameCount_++;
-        if (frameHadNonZero_) {
-            nonZeroFrameCount_++;
-            // Save to error frame ring buffer
-            errorFrames_[errorFrameHead_].hour = curFrameHour_;
-            errorFrames_[errorFrameHead_].minute = curFrameMinute_;
-            errorFrames_[errorFrameHead_].nzCount = curFrameNzCount_;
-            errorFrames_[errorFrameHead_].maxJitterMs = curFrameMaxJitter_;
-            errorFrames_[errorFrameHead_].errorSeconds = curFrameErrorSeconds_;
-            errorFrameHead_ = (errorFrameHead_ + 1) % MAX_ERROR_FRAMES;
-            if (errorFrameCount_ < MAX_ERROR_FRAMES) errorFrameCount_++;
-        }
-        frameHadNonZero_ = false;
-        curFrameNzCount_ = 0;
-        curFrameMaxJitter_ = 0;
-        curFrameErrorSeconds_ = 0;
-        curFrameHour_ = localHour;
-        curFrameMinute_ = localMinute;
-
         // Check local midnight reset
         bool isNearMidnight = (localHour == 0 && localMinute == 0);
         if (isNearMidnight && !resetThisMinute_) {
@@ -125,8 +81,6 @@ public:
                 history_[0].p99 = getPercentile(99);
                 history_[0].p999 = getPermille(999);
                 history_[0].p100 = getPercentile(100);
-                history_[0].frames = frameCount_;
-                history_[0].nzFrames = nonZeroFrameCount_;
                 history_[0].valid = true;
                 if (historyCount_ < HISTORY_DAYS) historyCount_++;
             }
@@ -178,8 +132,6 @@ public:
 
     unsigned long getNonZeroCount() const { return nonZeroCount_; }
     unsigned long getTotalCount() const { return totalCount_; }
-    unsigned long getFrameCount() const { return frameCount_; }
-    unsigned long getNonZeroFrameCount() const { return nonZeroFrameCount_; }
     
     /** @return average jitter in milliseconds */
     float getAverageJitter() const {
@@ -194,18 +146,17 @@ public:
 
     int getHistoryCount() const { return historyCount_; }
     const DailySummary& getHistory(int daysAgo) const { return history_[daysAgo]; }
-    int getErrorFrameCount() const { return errorFrameCount_; }
 
     /**
      * Format stats + sparse histogram + daily history for ESPUI transfer.
-     * Format: "n=N|nz=NZ|avg=A|p90=P|p95=P|p99=P|bucket:count,...||dn,dnz,davg,dp90,dp95,dp99||..."
+     * Format: "n=N|nz=NZ|avg=A|p90=P|p95=P|p99=P|p999=P|p100=P|bucket:count,...||dn,dnz,davg,dp90,dp95,dp99,dp999,dp100||..."
      * Only nonzero buckets are included. History entries separated by ||.
      */
     int formatForUI(char* buf, int bufSize) const {
-        int pos = snprintf(buf, bufSize, "n=%lu|nz=%lu|avg=%.1f|p90=%d|p95=%d|p99=%d|p999=%d|p100=%d|f=%lu|fnz=%lu|",
+        int pos = snprintf(buf, bufSize, "n=%lu|nz=%lu|avg=%.1f|p90=%d|p95=%d|p99=%d|p999=%d|p100=%d|",
             totalCount_, nonZeroCount_, getAverageJitter(),
             getPercentile(90), getPercentile(95), getPercentile(99), getPermille(999),
-            getPercentile(100), frameCount_, nonZeroFrameCount_);
+            getPercentile(100));
         
         bool first = true;
         for (int i = 0; i < NUM_BUCKETS && pos < bufSize - 1; i++) {
@@ -220,30 +171,10 @@ public:
         
         // Append daily history
         for (int d = 0; d < historyCount_ && pos < bufSize - 1; d++) {
-            pos += snprintf(buf + pos, bufSize - pos, "||%lu,%lu,%.1f,%d,%d,%d,%d,%d,%lu,%lu",
+            pos += snprintf(buf + pos, bufSize - pos, "||%lu,%lu,%.1f,%d,%d,%d,%d,%d",
                 history_[d].n, history_[d].nz, history_[d].avg,
                 history_[d].p90, history_[d].p95, history_[d].p99, history_[d].p999,
-                history_[d].p100, history_[d].frames, history_[d].nzFrames);
-        }
-
-        // Append error frame log (@@@ delimiter)
-        for (int i = 0; i < errorFrameCount_ && pos < bufSize - 1; i++) {
-            int idx = (errorFrameHead_ - 1 - i + MAX_ERROR_FRAMES) % MAX_ERROR_FRAMES;
-            const ErrorFrame& ef = errorFrames_[idx];
-            // Format seconds list
-            char secBuf[128];
-            int spos = 0;
-            bool sfirst = true;
-            for (int s = 0; s < 60; s++) {
-                if (ef.errorSeconds & (1ULL << s)) {
-                    if (!sfirst) spos += snprintf(secBuf + spos, sizeof(secBuf) - spos, "+");
-                    spos += snprintf(secBuf + spos, sizeof(secBuf) - spos, "%d", s);
-                    sfirst = false;
-                }
-            }
-            if (spos == 0) snprintf(secBuf, sizeof(secBuf), "-");
-            pos += snprintf(buf + pos, bufSize - pos, "@@@%02d:%02d,%d,%d,%s",
-                ef.hour, ef.minute, ef.nzCount, ef.maxJitterMs, secBuf);
+                history_[d].p100);
         }
         return pos;
     }
@@ -255,14 +186,7 @@ public:
         totalCount_ = 0;
         nonZeroCount_ = 0;
         jitterSumMs_ = 0;
-        frameCount_ = 0;
-        nonZeroFrameCount_ = 0;
-        frameHadNonZero_ = false;
         resetThisMinute_ = false;
-        curFrameNzCount_ = 0;
-        curFrameMaxJitter_ = 0;
-        curFrameErrorSeconds_ = 0;
-        // Note: errorFrames_ ring buffer is NOT cleared on daily reset
     }
 
 private:
@@ -270,20 +194,9 @@ private:
     unsigned long totalCount_;
     unsigned long nonZeroCount_;
     unsigned long jitterSumMs_;
-    unsigned long frameCount_;
-    unsigned long nonZeroFrameCount_;
-    bool frameHadNonZero_;
     bool resetThisMinute_;
     DailySummary history_[HISTORY_DAYS];
     int historyCount_;
-    ErrorFrame errorFrames_[MAX_ERROR_FRAMES];
-    int errorFrameCount_;
-    int errorFrameHead_;
-    uint8_t curFrameNzCount_;
-    uint8_t curFrameMaxJitter_;
-    uint64_t curFrameErrorSeconds_;
-    uint8_t curFrameHour_;
-    uint8_t curFrameMinute_;
 };
 
 #endif // TRANSITION_STATS_H

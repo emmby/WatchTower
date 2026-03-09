@@ -186,29 +186,24 @@ function convertToHistogram(containerSpan) {
     const rawText = containerSpan.textContent.trim();
     if (!rawText.includes('|')) return;
 
-    // Split off error frames (@@@ delimiter)
-    const errorParts = rawText.split('@@@');
-    const mainData = errorParts[0];
-    const errorEntries = errorParts.slice(1);
-
     // Split on || first to separate today's data from history
-    const sections = mainData.split('||');
+    const sections = rawText.split('||');
     const todayData = sections[0];
     const historyEntries = sections.slice(1);
 
     // Parse today's data
     const parts = todayData.split('|');
-    if (parts.length < 11) return;
+    if (parts.length < 9) return;
 
     const stats = {};
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 8; i++) {
         const [key, val] = parts[i].split('=');
         stats[key] = val;
     }
 
     // Parse sparse histogram into 100-element array
     const buckets1ms = new Array(100).fill(0);
-    const histData = parts.slice(10).join('|');
+    const histData = parts.slice(8).join('|');
     if (histData) {
         histData.split(',').forEach(entry => {
             const [idx, count] = entry.split(':').map(Number);
@@ -239,8 +234,7 @@ function convertToHistogram(containerSpan) {
     let html = '<div style="padding:4px 0">';
     html += `<div style="${S}font-size:0.85em;margin-bottom:6px">`;
     html += `<b>Today:</b> n=${stats.n} &nbsp; nonzero=${stats.nz} &nbsp; avg=${stats.avg}ms &nbsp; `;
-    html += `p90=${stats.p90}ms &nbsp; p95=${stats.p95}ms &nbsp; p99=${stats.p99}ms &nbsp; p99.9=${stats.p999}ms &nbsp; max=${stats.p100}ms &nbsp; `;
-    html += `nonzero-frames=${stats.fnz}/${stats.f}`;
+    html += `p90=${stats.p90}ms &nbsp; p95=${stats.p95}ms &nbsp; p99=${stats.p99}ms &nbsp; p99.9=${stats.p999}ms &nbsp; max=${stats.p100}ms`;
     html += '</div>';
 
     html += `<div style="${S}font-size:0.7em;color:#888;margin-bottom:2px">(log scale)</div>`;
@@ -272,12 +266,11 @@ function convertToHistogram(containerSpan) {
         html += '<th style="text-align:right;padding:2px 8px">p99</th>';
         html += '<th style="text-align:right;padding:2px 8px">p99.9</th>';
         html += '<th style="text-align:right;padding:2px 8px">max</th>';
-        html += '<th style="text-align:right;padding:2px 8px">nz-frames</th>';
         html += '</tr></thead><tbody>';
 
         historyEntries.forEach((entry, i) => {
             const vals = entry.split(',');
-            if (vals.length >= 10) {
+            if (vals.length >= 8) {
                 const dayLabel = i === 0 ? 'Yesterday' : `${i + 1}d ago`;
                 html += `<tr style="border-bottom:1px solid #333">`;
                 html += `<td style="padding:2px 8px">${dayLabel}</td>`;
@@ -289,7 +282,6 @@ function convertToHistogram(containerSpan) {
                 html += `<td style="text-align:right;padding:2px 8px">${vals[5]}ms</td>`;
                 html += `<td style="text-align:right;padding:2px 8px">${vals[6]}ms</td>`;
                 html += `<td style="text-align:right;padding:2px 8px">${vals[7]}ms</td>`;
-                html += `<td style="text-align:right;padding:2px 8px">${vals[9]}/${vals[8]}</td>`;
                 html += '</tr>';
             }
         });
@@ -297,32 +289,7 @@ function convertToHistogram(containerSpan) {
         html += '</tbody></table></div>';
     }
 
-    // Error frame log
-    if (errorEntries.length > 0) {
-        html += `<div style="margin-top:10px;border-top:1px solid #555;padding-top:6px">`;
-        html += `<div style="${S}font-size:0.85em;margin-bottom:4px"><b>Recent Error Frames</b> <span style="color:#888;font-size:0.85em">(last ${errorEntries.length})</span></div>`;
-        html += `<table style="${S}font-size:0.75em;border-collapse:collapse;width:100%">`;
-        html += '<thead><tr style="border-bottom:1px solid #555">';
-        html += '<th style="text-align:left;padding:2px 8px">Time</th>';
-        html += '<th style="text-align:right;padding:2px 8px">Count</th>';
-        html += '<th style="text-align:right;padding:2px 8px">Max</th>';
-        html += '<th style="text-align:left;padding:2px 8px">Seconds</th>';
-        html += '</tr></thead><tbody>';
 
-        errorEntries.forEach(entry => {
-            const vals = entry.split(',');
-            if (vals.length >= 4) {
-                html += `<tr style="border-bottom:1px solid #333">`;
-                html += `<td style="padding:2px 8px">${vals[0]}</td>`;
-                html += `<td style="text-align:right;padding:2px 8px">${vals[1]}</td>`;
-                html += `<td style="text-align:right;padding:2px 8px">${vals[2]}ms</td>`;
-                html += `<td style="padding:2px 8px;color:#f1c40f">${vals.slice(3).join(',').replace(/\+/g, ', :').replace(/^/, ':')}</td>`;
-                html += '</tr>';
-            }
-        });
-
-        html += '</tbody></table></div>';
-    }
 
     html += '</div>';
     containerSpan.innerHTML = html;

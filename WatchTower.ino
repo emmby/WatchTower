@@ -496,7 +496,7 @@ void loop() {
 
     if (pendingStatsLog) {
         pendingStatsLog = false;
-        Serial.printf("[TransitionStats] n=%lu nonzero=%lu avg=%.1fms p90=%dms p95=%dms p99=%dms p999=%dms p100=%dms frames=%lu nzFrames=%lu\n",
+        Serial.printf("[TransitionStats] n=%lu nonzero=%lu avg=%.1fms p90=%dms p95=%dms p99=%dms p999=%dms p100=%dms\n",
             transitionStats.getTotalCount(),
             transitionStats.getNonZeroCount(),
             transitionStats.getAverageJitter(),
@@ -504,9 +504,7 @@ void loop() {
             transitionStats.getPercentile(95),
             transitionStats.getPercentile(99),
             transitionStats.getPermille(999),
-            transitionStats.getPercentile(100),
-            transitionStats.getFrameCount(),
-            transitionStats.getNonZeroFrameCount());
+            transitionStats.getPercentile(100));
     }
 
     static int prevSecond = -1;
@@ -575,7 +573,7 @@ void loop() {
         }
 
         // Jitter histogram
-        char jitterBuf[1024];
+        char jitterBuf[512];
         transitionStats.formatForUI(jitterBuf, sizeof(jitterBuf));
         ESPUI.print(ui_jitter, jitterBuf);
     }
