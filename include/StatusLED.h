@@ -61,9 +61,9 @@ private:
     Adafruit_NeoPixel _pixel{1, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800};
 
     static constexpr uint8_t  _BRIGHTNESS    = 10;       // very dim, 0-255
-    static constexpr uint32_t _COLOR_READY    = (0 << 16) | (60 << 8) | 0;    // green
-    static constexpr uint32_t _COLOR_LOADING  = (60 << 16) | (32 << 8) | 0;   // orange
-    static constexpr uint32_t _COLOR_ERROR    = (150 << 16) | (0 << 8) | 0;   // red
-    static constexpr uint32_t _COLOR_TRANSMIT = (32 << 16) | (0 << 8) | 0;    // dim red
+    static constexpr uint32_t _COLOR_READY    = 0x003C00;  // green
+    static constexpr uint32_t _COLOR_LOADING  = 0x3C2000;  // orange
+    static constexpr uint32_t _COLOR_ERROR    = 0x960000;  // red
+    static constexpr uint32_t _COLOR_TRANSMIT = 0x200000;  // dim red
 #endif
 };
