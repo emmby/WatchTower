@@ -12,6 +12,7 @@
 #include "WiFiUdp.h"
 #include "ArduinoMDNS.h"
 #include "esp_sntp.h"
+#include "esp_timer.h"
 #include "WiFi.h"
 #include "Esp.h"
 #include "SPI.h"
@@ -147,6 +148,7 @@ void test_serial_date_output(void) {
     
     // Act
     setup(); // Initialize
+    onSignalTimer(NULL);  // Simulate the hardware timer firing
     loop();  // Run loop once
 
     // Assert

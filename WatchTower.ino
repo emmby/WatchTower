@@ -105,9 +105,7 @@ volatile bool transitionOccurred = false;
 volatile unsigned long lastTransitionUsec = 0;
 volatile int lastTransitionSecond = 0;
 
-#ifndef UNIT_TEST
 esp_timer_handle_t signalTimer = nullptr;
-#endif
 
 // ESPUI Interface IDs
 uint16_t ui_time;
@@ -387,7 +385,6 @@ void setup() {
 
   // Start the high-priority signal timer (1ms interval).
   // This ensures PWM transitions happen on time regardless of WiFi/ESPUI activity.
-  #ifndef UNIT_TEST
   const esp_timer_create_args_t timerArgs = {
       .callback = onSignalTimer,
       .arg = NULL,
@@ -397,7 +394,6 @@ void setup() {
   esp_timer_create(&timerArgs, &signalTimer);
   esp_timer_start_periodic(signalTimer, 1000);  // 1ms = 1000us
   Serial.println("Signal timer started (1ms interval)");
-  #endif
 }
 
 void loop() {
@@ -444,21 +440,6 @@ void loop() {
         pendingStatsLog = transitionStats.getTotalCount() > 0;
     }
 
-  // In unit test mode, no timer callback exists — compute signal inline
-  #ifdef UNIT_TEST
-  {
-    int sec = now.tv_sec % 60;
-    const TimeCodeSymbol* bits = const_cast<const TimeCodeSymbol*>(activeBroadcast);
-    bool level = signalGenerator->getLevelForTimeCodeSymbol(
-        bits[sec], now.tv_usec / 1000);
-    if (level != logicValue) {
-        logicValue = level;
-        lastTransitionUsec = now.tv_usec;
-        lastTransitionSecond = sec;
-        transitionOccurred = true;
-    }
-  }
-  #endif
 
   // --- HANDLE TRANSITIONS DETECTED BY TIMER CALLBACK ---
   if( transitionOccurred ) {
