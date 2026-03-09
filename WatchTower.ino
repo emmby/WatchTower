@@ -23,19 +23,18 @@
 #include <WiFiManager.h>
 #include "include/StatusLED.h"
 #include <SPI.h>
-#include <ESPUI.h>
 #include <WiFiUdp.h>
 #include <ArduinoMDNS.h>
 #include <time.h>
 #include <esp_sntp.h>
 #include <Preferences.h>
-#include "customJS.h"
 #include "include/RadioTimeSignal.h"
 #include "include/WWVBSignal.h"
 #include "include/DCF77Signal.h"
 #include "include/MSFSignal.h"
 #include "include/JJYSignal.h"
 #include "include/TransitionStats.h"
+#include "include/WebUI.h"
 
 // Flip to false to disable the built-in web ui.
 // You might want to do this to avoid leaving unnecessary open ports on your network.
@@ -63,6 +62,7 @@ RadioTimeSignal* signalGenerator = &wwvb;
 const char* const ntpServer = "pool.ntp.org";
 
 StatusLED statusLED;
+WebUI webUI;
 WiFiManager wifiManager;
 WiFiUDP udp;
 MDNS mdns(udp);
@@ -95,58 +95,7 @@ volatile int lastTransitionSecond = 0;
 
 esp_timer_handle_t signalTimer = nullptr;
 
-// ESPUI Interface IDs
-uint16_t ui_time;
-uint16_t ui_time_utc;
-uint16_t ui_date;
-uint16_t ui_date_utc;
-uint16_t ui_timezone;
-uint16_t ui_broadcast;
-uint16_t ui_uptime;
-uint16_t ui_last_sync;
-uint16_t ui_network_sync_switch;
-uint16_t ui_manual_date;
-uint16_t ui_manual_time;
-uint16_t ui_signal_select;
-uint16_t ui_jitter;
 
-String manualDate = "";
-String manualTime = "";
-
-void updateManualTimeCallback(Control *sender, int value) {
-    if (sender->id == ui_manual_date) {
-        manualDate = sender->value;
-    } else if (sender->id == ui_manual_time) {
-        manualTime = sender->value;
-    }
-
-    struct timeval now;
-    gettimeofday(&now, NULL);
-    struct tm tm;
-    localtime_r(&now.tv_sec, &tm);
-
-    if (manualDate.length() > 0) {
-        // Parse YYYY-MM-DD
-        strptime(manualDate.c_str(), "%Y-%m-%d", &tm);
-    }
-    
-    if (manualTime.length() > 0) {
-        // Parse HH:MM
-        strptime(manualTime.c_str(), "%H:%M", &tm);
-        tm.tm_sec = 0; // Reset seconds when setting time
-    }
-
-    tm.tm_isdst = -1; // Let mktime determine DST
-    time_t t = mktime(&tm);
-    
-    if (t != -1) {
-        struct timeval tv = { .tv_sec = t, .tv_usec = 0 };
-        settimeofday(&tv, NULL);
-        Serial.println("Manual time updated");
-    } else {
-        Serial.println("Failed to set manual time");
-    }
-}
 
 // A callback that tracks when we last sync'ed the
 // time with the ntp server
@@ -173,27 +122,7 @@ void clearBroadcastValues(TimeCodeSymbol* buf) {
     }
 }
 
-void updateSignalCallback(Control *sender, int value) {
-    if (sender->id == ui_signal_select) {
-        String selected = sender->value;
-        if (selected == "WWVB") {
-            signalGenerator = &wwvb;
-        } else if (selected == "DCF77") {
-            signalGenerator = &dcf77;
-        } else if (selected == "MSF") {
-            signalGenerator = &msf;
-        } else if (selected == "JJY") {
-            signalGenerator = &jjy;
-        }
-        
-        preferences.putString("signal", signalGenerator->getName());
-        Serial.println("Signal changed to: " + signalGenerator->getName());
-        
-        // Update PWM frequency
-        ledcDetach(PIN_ANTENNA);
-        ledcAttach(PIN_ANTENNA, signalGenerator->getFrequency(), 8);
-    }
-}
+
 
 /**
  * High-priority timer callback (runs every 1ms).
@@ -216,29 +145,7 @@ void onSignalTimer(void* arg) {
     }
 }
 
-// Callback for when the network sync switch is toggled
-void updateSyncCallback(Control *sender, int value) {
-  if (sender->id == ui_network_sync_switch) {
-    networkSyncEnabled = (value == S_ACTIVE);
-    preferences.putBool("net_sync", networkSyncEnabled);
-    Serial.printf("Network Sync changed to: %s\n", networkSyncEnabled ? "ENABLED" : "DISABLED");
-    
-    if (networkSyncEnabled) {
-        // Re-enable sync
-        esp_sntp_stop();
-        configTzTime(timezone, ntpServer);
-        Serial.println("NTP Sync re-enabled");
-        ESPUI.updateVisibility(ui_manual_date, false);
-        ESPUI.updateVisibility(ui_manual_time, false);
-    } else {
-        // Disable sync
-        esp_sntp_stop(); 
-        Serial.println("NTP Sync disabled");
-        ESPUI.updateVisibility(ui_manual_date, true);
-        ESPUI.updateVisibility(ui_manual_time, true);
-    }
-  }
-}
+
 
 
 void setup() {
@@ -272,54 +179,12 @@ void setup() {
   clearBroadcastValues(broadcastA);
   clearBroadcastValues(broadcastB);
 
-  // --- ESPUI SETUP ---
-  ESPUI.setVerbosity(Verbosity::Quiet);
-  
-  // Create Labels
-  ui_broadcast = ESPUI.label("Broadcast Waveform", ControlColor::Sunflower, "");
-  ui_time = ESPUI.label("Current Time", ControlColor::Turquoise, "Loading...");
-  ui_time_utc = ESPUI.addControl(ControlType::Label, "UTC", "Loading...", ControlColor::Turquoise, ui_time);
-  ui_date = ESPUI.label("Date", ControlColor::Emerald, "Loading...");
-  ui_date_utc = ESPUI.addControl(ControlType::Label, "UTC", "Loading...", ControlColor::Emerald, ui_date);
-  ui_timezone = ESPUI.label("Timezone", ControlColor::Peterriver, timezone);
-  ui_uptime = ESPUI.label("System Uptime", ControlColor::Carrot, "0s");
-  ui_last_sync = ESPUI.label("Last NTP Sync", ControlColor::Alizarin, "Pending...");
-  ui_network_sync_switch = ESPUI.switcher("Network time sync", updateSyncCallback, ControlColor::Sunflower, networkSyncEnabled);
-  
-  ui_manual_date = ESPUI.text("Manual Date", updateManualTimeCallback, ControlColor::Dark, "");
-  ESPUI.setInputType(ui_manual_date, "date");
-  ESPUI.updateVisibility(ui_manual_date, !networkSyncEnabled);
-
-  ui_manual_time = ESPUI.text("Manual Time", updateManualTimeCallback, ControlColor::Dark, "");
-  ESPUI.setInputType(ui_manual_time, "time");
-  ESPUI.updateVisibility(ui_manual_time, !networkSyncEnabled);
-
-  ui_signal_select = ESPUI.addControl(ControlType::Select, "Signal Protocol", "", ControlColor::Turquoise, Control::noParent, updateSignalCallback);
-  ESPUI.addControl(ControlType::Option, "WWVB", "WWVB", ControlColor::Alizarin, ui_signal_select);
-  ESPUI.addControl(ControlType::Option, "DCF77", "DCF77", ControlColor::Alizarin, ui_signal_select);
-  ESPUI.addControl(ControlType::Option, "MSF", "MSF", ControlColor::Alizarin, ui_signal_select);
-  ESPUI.addControl(ControlType::Option, "JJY", "JJY", ControlColor::Alizarin, ui_signal_select);
-  
-  // Set initial selection
-  if (signalGenerator == &wwvb) ESPUI.updateSelect(ui_signal_select, "WWVB");
-  else if (signalGenerator == &dcf77) ESPUI.updateSelect(ui_signal_select, "DCF77");
-  else if (signalGenerator == &msf) ESPUI.updateSelect(ui_signal_select, "MSF");
-  else if (signalGenerator == &jjy) ESPUI.updateSelect(ui_signal_select, "JJY");
-
-
-  ESPUI.setPanelWide(ui_broadcast, true);
-  ESPUI.setElementStyle(ui_broadcast, "font-family: monospace");
-
-  ui_jitter = ESPUI.label("Transition Jitter", ControlColor::Wetasphalt, "Collecting...");
-  ESPUI.setPanelWide(ui_jitter, true);
-
-  ESPUI.setCustomJS(customJS);
-
-  // You may disable the internal webserver by commenting out this line
+  // --- WEB UI SETUP ---
   if( ENABLE_WEB_UI ) {
-    mdns.begin(WiFi.localIP(), "watchtower");
-    Serial.println("Connect to http://watchtower.local for the console");
-    ESPUI.begin("WatchTower");
+    webUI.begin(timezone, signalGenerator,
+                wwvb, dcf77, msf, jjy,
+                preferences, PIN_ANTENNA, ntpServer,
+                networkSyncEnabled, lastSync, mdns);
   }
   
   // --- TIME SYNC ---
@@ -455,74 +320,9 @@ void loop() {
     }
 
     static int prevSecond = -1;
-    if( prevSecond != buf_now_utc.tm_sec ) {
+    if( ENABLE_WEB_UI && prevSecond != buf_now_utc.tm_sec ) {
         prevSecond = buf_now_utc.tm_sec;
-
-        // --- UPDATE THE WEB UI ---
-
-        // Time
-        char buf[62];
-        strftime(buf, sizeof(buf), "%H:%M:%S%z %Z", &buf_now_local);
-        ESPUI.print(ui_time, buf);
-
-        // UTC Time
-        strftime(buf, sizeof(buf), "%H:%M:%S UTC", &buf_now_utc);
-        ESPUI.print(ui_time_utc, buf);
-
-        // Date (local with timezone label)
-        strftime(buf, sizeof(buf), "%A, %B %d %Y (Day %j) %Z", &buf_now_local);
-        ESPUI.print(ui_date, buf);
-
-        // UTC Date
-        strftime(buf, sizeof(buf), "%A, %B %d %Y (Day %j) UTC", &buf_now_utc);
-        ESPUI.print(ui_date_utc, buf);
-
-        // Broadcast window
-        for( int i=0; i<60; ++i ) { // TODO leap seconds
-        switch(activeBroadcast[i]) {
-            case TimeCodeSymbol::MARK:
-                buf[i] = 'M';
-                break;
-            case TimeCodeSymbol::ZERO:
-                buf[i] = '0';
-                break;
-            case TimeCodeSymbol::ONE:
-                buf[i] = '1';
-                break;
-            case TimeCodeSymbol::IDLE:
-                buf[i] = '-';
-                break;
-            default:
-                buf[i] = ' ';
-                break;
-        }
-        }
-        buf[60] = '\0';
-        ESPUI.print(ui_broadcast, buf);
-
-
-        // Uptime
-        long uptime = millis() / 1000;
-        int up_d = uptime / 86400;
-        int up_h = (uptime % 86400) / 3600;
-        int up_m = (uptime % 3600) / 60;
-        int up_s = uptime % 60;
-        snprintf(buf, sizeof(buf), "%03dd %02dh %02dm %02ds", up_d, up_h, up_m, up_s);
-        ESPUI.print(ui_uptime, buf);
-
-        // Last Sync
-        if (lastSync == 0) {
-            ESPUI.print(ui_last_sync, "Never");
-        } else {
-            unsigned long secondsSinceSync = (millis() - lastSync) / 1000;
-            snprintf(buf, sizeof(buf), "%lus ago", secondsSinceSync);
-            ESPUI.print(ui_last_sync, buf);
-        }
-
-        // Jitter histogram
-        char jitterBuf[512];
-        transitionStats.formatForUI(jitterBuf, sizeof(jitterBuf));
-        ESPUI.print(ui_jitter, jitterBuf);
+        webUI.update(buf_now_local, buf_now_utc, lastSync, activeBroadcast, transitionStats);
     }
 
     // Check for stale sync (24 hours)

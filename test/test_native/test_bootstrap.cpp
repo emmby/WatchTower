@@ -303,22 +303,15 @@ void test_msf_signal(void) {
     TEST_ASSERT_TRUE(msf.getLevelForTimeCodeSymbol(bit, 100));
 }
 
-// Access to globals from WatchTower.ino
-extern RadioTimeSignal* signalGenerator;
-extern void updateSignalCallback(Control *sender, int value);
-extern uint16_t ui_signal_select;
-
-// last_ledc_freq is defined globally now
-
 void test_signal_switching(void) {
     // Arrange
     setup(); // Ensure UI is created
     
     // Act - Select DCF77
     Control sender;
-    sender.id = ui_signal_select;
+    sender.id = webUI._ui_signal_select;
     sender.value = "DCF77";
-    updateSignalCallback(&sender, S_ACTIVE);
+    WebUI::_onSignalChange(&sender, S_ACTIVE);
     
     // Assert
     TEST_ASSERT_EQUAL_STRING("DCF77", signalGenerator->getName().c_str());
@@ -326,7 +319,7 @@ void test_signal_switching(void) {
     
     // Act - Select MSF
     sender.value = "MSF";
-    updateSignalCallback(&sender, S_ACTIVE);
+    WebUI::_onSignalChange(&sender, S_ACTIVE);
     
     // Assert
     TEST_ASSERT_EQUAL_STRING("MSF", signalGenerator->getName().c_str());
@@ -334,7 +327,7 @@ void test_signal_switching(void) {
     
     // Act - Select JJY
     sender.value = "JJY";
-    updateSignalCallback(&sender, S_ACTIVE);
+    WebUI::_onSignalChange(&sender, S_ACTIVE);
     
     // Assert
     TEST_ASSERT_EQUAL_STRING("JJY", signalGenerator->getName().c_str());
@@ -342,7 +335,7 @@ void test_signal_switching(void) {
     
     // Act - Select WWVB
     sender.value = "WWVB";
-    updateSignalCallback(&sender, S_ACTIVE);
+    WebUI::_onSignalChange(&sender, S_ACTIVE);
     
     // Assert
     TEST_ASSERT_EQUAL_STRING("WWVB", signalGenerator->getName().c_str());
