@@ -400,14 +400,22 @@ void test_transition_stats_midnight_reset(void) {
     
     stats.checkMidnightReset(0, 0);
     TEST_ASSERT_EQUAL(0, stats.getTotalCount());
+    // Previous day's stats should be saved to history
+    TEST_ASSERT_EQUAL(1, stats.getHistoryCount());
+    TEST_ASSERT_EQUAL(2, stats.getHistory(0).n);
+    TEST_ASSERT_TRUE(stats.getHistory(0).valid);
     
     stats.recordTransition(200000);
     stats.checkMidnightReset(0, 0); // should not reset again
     TEST_ASSERT_EQUAL(1, stats.getTotalCount());
+    TEST_ASSERT_EQUAL(1, stats.getHistoryCount()); // still 1, no new reset
     
     stats.checkMidnightReset(0, 1);
     stats.checkMidnightReset(0, 0);
     TEST_ASSERT_EQUAL(0, stats.getTotalCount());
+    TEST_ASSERT_EQUAL(2, stats.getHistoryCount()); // now 2 days of history
+    TEST_ASSERT_EQUAL(1, stats.getHistory(0).n);   // most recent day
+    TEST_ASSERT_EQUAL(2, stats.getHistory(1).n);   // day before
 }
 
 int main(int argc, char **argv) {

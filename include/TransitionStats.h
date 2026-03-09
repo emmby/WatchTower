@@ -12,15 +12,31 @@
  * microsecond value (tv_usec) directly.
  * 
  * Results are stored in a histogram with 1ms-wide buckets (0ms–99ms).
- * Stats reset at midnight each day (UTC).
+ * Stats reset at midnight each day (UTC), with the previous day's summary
+ * saved to a 7-day rolling history.
  */
 class TransitionStats {
 public:
     static const int NUM_BUCKETS = 100;
     static const unsigned long HUNDRED_MS_US = 100000;
+    static const int HISTORY_DAYS = 7;
+
+    struct DailySummary {
+        unsigned long n;
+        unsigned long nz;
+        float avg;
+        int p90;
+        int p95;
+        int p99;
+        bool valid;
+    };
 
     TransitionStats() {
         reset();
+        for (int i = 0; i < HISTORY_DAYS; i++) {
+            history_[i].valid = false;
+        }
+        historyCount_ = 0;
     }
 
     /**
@@ -41,10 +57,26 @@ public:
 
     /**
      * Check if we've crossed midnight (UTC) and reset if so.
+     * Saves the current day's summary to rolling history before clearing.
      */
     void checkMidnightReset(int utcHour, int utcMinute) {
         bool isNearMidnight = (utcHour == 0 && utcMinute == 0);
         if (isNearMidnight && !resetThisMinute_) {
+            // Save today's summary to history before resetting
+            if (totalCount_ > 0) {
+                // Shift history (oldest falls off)
+                for (int i = HISTORY_DAYS - 1; i > 0; i--) {
+                    history_[i] = history_[i - 1];
+                }
+                history_[0].n = totalCount_;
+                history_[0].nz = nonZeroCount_;
+                history_[0].avg = getAverageJitter();
+                history_[0].p90 = getPercentile(90);
+                history_[0].p95 = getPercentile(95);
+                history_[0].p99 = getPercentile(99);
+                history_[0].valid = true;
+                if (historyCount_ < HISTORY_DAYS) historyCount_++;
+            }
             reset();
             resetThisMinute_ = true;
         } else if (!isNearMidnight) {
@@ -85,10 +117,13 @@ public:
         return histogram_[bucket];
     }
 
+    int getHistoryCount() const { return historyCount_; }
+    const DailySummary& getHistory(int daysAgo) const { return history_[daysAgo]; }
+
     /**
-     * Format stats + sparse histogram for ESPUI transfer.
-     * Format: "n=N|nz=NZ|avg=A|p90=P|p95=P|p99=P|bucket:count,bucket:count,..."
-     * Only nonzero buckets are included.
+     * Format stats + sparse histogram + daily history for ESPUI transfer.
+     * Format: "n=N|nz=NZ|avg=A|p90=P|p95=P|p99=P|bucket:count,...||dn,dnz,davg,dp90,dp95,dp99||..."
+     * Only nonzero buckets are included. History entries separated by ||.
      */
     int formatForUI(char* buf, int bufSize) const {
         int pos = snprintf(buf, bufSize, "n=%lu|nz=%lu|avg=%.1f|p90=%d|p95=%d|p99=%d|",
@@ -104,6 +139,13 @@ public:
                 pos += snprintf(buf + pos, bufSize - pos, "%d:%lu", i, histogram_[i]);
                 first = false;
             }
+        }
+        
+        // Append daily history
+        for (int d = 0; d < historyCount_ && pos < bufSize - 1; d++) {
+            pos += snprintf(buf + pos, bufSize - pos, "||%lu,%lu,%.1f,%d,%d,%d",
+                history_[d].n, history_[d].nz, history_[d].avg,
+                history_[d].p90, history_[d].p95, history_[d].p99);
         }
         return pos;
     }
@@ -124,6 +166,8 @@ private:
     unsigned long nonZeroCount_;
     unsigned long jitterSumMs_;
     bool resetThisMinute_;
+    DailySummary history_[HISTORY_DAYS];
+    int historyCount_;
 };
 
 #endif // TRANSITION_STATS_H
