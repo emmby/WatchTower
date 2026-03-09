@@ -193,17 +193,17 @@ function convertToHistogram(containerSpan) {
 
     // Parse today's data
     const parts = todayData.split('|');
-    if (parts.length < 7) return;
+    if (parts.length < 9) return;
 
     const stats = {};
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 8; i++) {
         const [key, val] = parts[i].split('=');
         stats[key] = val;
     }
 
     // Parse sparse histogram into 100-element array
     const buckets1ms = new Array(100).fill(0);
-    const histData = parts.slice(6).join('|');
+    const histData = parts.slice(8).join('|');
     if (histData) {
         histData.split(',').forEach(entry => {
             const [idx, count] = entry.split(':').map(Number);
@@ -233,7 +233,8 @@ function convertToHistogram(containerSpan) {
     let html = '<div style="padding:4px 0">';
     html += `<div style="${S}font-size:0.85em;margin-bottom:6px">`;
     html += `<b>Today:</b> n=${stats.n} &nbsp; nonzero=${stats.nz} &nbsp; avg=${stats.avg}ms &nbsp; `;
-    html += `p90=${stats.p90}ms &nbsp; p95=${stats.p95}ms &nbsp; p99=${stats.p99}ms`;
+    html += `p90=${stats.p90}ms &nbsp; p95=${stats.p95}ms &nbsp; p99=${stats.p99}ms &nbsp; `;
+    html += `nonzero-frames=${stats.fnz}/${stats.f}`;
     html += '</div>';
 
     displayBuckets.forEach((count, i) => {
@@ -261,11 +262,12 @@ function convertToHistogram(containerSpan) {
         html += '<th style="text-align:right;padding:2px 8px">p90</th>';
         html += '<th style="text-align:right;padding:2px 8px">p95</th>';
         html += '<th style="text-align:right;padding:2px 8px">p99</th>';
+        html += '<th style="text-align:right;padding:2px 8px">nz-frames</th>';
         html += '</tr></thead><tbody>';
 
         historyEntries.forEach((entry, i) => {
             const vals = entry.split(',');
-            if (vals.length >= 6) {
+            if (vals.length >= 8) {
                 const dayLabel = i === 0 ? 'Yesterday' : `${i + 1}d ago`;
                 html += `<tr style="border-bottom:1px solid #333">`;
                 html += `<td style="padding:2px 8px">${dayLabel}</td>`;
@@ -275,6 +277,7 @@ function convertToHistogram(containerSpan) {
                 html += `<td style="text-align:right;padding:2px 8px">${vals[3]}ms</td>`;
                 html += `<td style="text-align:right;padding:2px 8px">${vals[4]}ms</td>`;
                 html += `<td style="text-align:right;padding:2px 8px">${vals[5]}ms</td>`;
+                html += `<td style="text-align:right;padding:2px 8px">${vals[7]}/${vals[6]}</td>`;
                 html += '</tr>';
             }
         });

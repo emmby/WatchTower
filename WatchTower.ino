@@ -377,7 +377,7 @@ void loop() {
             buf_tomorrow_start.tm_isdst
         );
         clearBroadcastValues();
-        transitionStats.checkMidnightReset(buf_now_utc.tm_hour, buf_now_utc.tm_min);
+        transitionStats.onMinuteBoundary(buf_now_utc.tm_hour, buf_now_utc.tm_min);
         pendingStatsLog = transitionStats.getTotalCount() > 0;
     }
     TimeCodeSymbol bit = signalGenerator->getSymbolForSecond(buf_now_utc.tm_sec);
@@ -419,13 +419,15 @@ void loop() {
 
     if (pendingStatsLog) {
         pendingStatsLog = false;
-        Serial.printf("[TransitionStats] n=%lu nonzero=%lu avg=%.1fms p90=%dms p95=%dms p99=%dms\n",
+        Serial.printf("[TransitionStats] n=%lu nonzero=%lu avg=%.1fms p90=%dms p95=%dms p99=%dms frames=%lu nzFrames=%lu\n",
             transitionStats.getTotalCount(),
             transitionStats.getNonZeroCount(),
             transitionStats.getAverageJitter(),
             transitionStats.getPercentile(90),
             transitionStats.getPercentile(95),
-            transitionStats.getPercentile(99));
+            transitionStats.getPercentile(99),
+            transitionStats.getFrameCount(),
+            transitionStats.getNonZeroFrameCount());
     }
 
     static int prevSecond = -1;

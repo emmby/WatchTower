@@ -28,6 +28,8 @@ public:
         int p90;
         int p95;
         int p99;
+        unsigned long frames;
+        unsigned long nzFrames;
         bool valid;
     };
 
@@ -52,14 +54,23 @@ public:
         histogram_[bucket]++;
         totalCount_++;
         jitterSumMs_ += jitterMs;
-        if (jitterMs > 0) nonZeroCount_++;
+        if (jitterMs > 0) {
+            nonZeroCount_++;
+            frameHadNonZero_ = true;
+        }
     }
 
     /**
-     * Check if we've crossed midnight (UTC) and reset if so.
+     * Called once per minute. Tracks frame counts and checks for midnight reset.
      * Saves the current day's summary to rolling history before clearing.
      */
-    void checkMidnightReset(int utcHour, int utcMinute) {
+    void onMinuteBoundary(int utcHour, int utcMinute) {
+        // Track frame stats
+        frameCount_++;
+        if (frameHadNonZero_) nonZeroFrameCount_++;
+        frameHadNonZero_ = false;
+
+        // Check midnight reset
         bool isNearMidnight = (utcHour == 0 && utcMinute == 0);
         if (isNearMidnight && !resetThisMinute_) {
             // Save today's summary to history before resetting
@@ -74,6 +85,8 @@ public:
                 history_[0].p90 = getPercentile(90);
                 history_[0].p95 = getPercentile(95);
                 history_[0].p99 = getPercentile(99);
+                history_[0].frames = frameCount_;
+                history_[0].nzFrames = nonZeroFrameCount_;
                 history_[0].valid = true;
                 if (historyCount_ < HISTORY_DAYS) historyCount_++;
             }
@@ -105,6 +118,8 @@ public:
 
     unsigned long getNonZeroCount() const { return nonZeroCount_; }
     unsigned long getTotalCount() const { return totalCount_; }
+    unsigned long getFrameCount() const { return frameCount_; }
+    unsigned long getNonZeroFrameCount() const { return nonZeroFrameCount_; }
     
     /** @return average jitter in milliseconds */
     float getAverageJitter() const {
@@ -126,9 +141,10 @@ public:
      * Only nonzero buckets are included. History entries separated by ||.
      */
     int formatForUI(char* buf, int bufSize) const {
-        int pos = snprintf(buf, bufSize, "n=%lu|nz=%lu|avg=%.1f|p90=%d|p95=%d|p99=%d|",
+        int pos = snprintf(buf, bufSize, "n=%lu|nz=%lu|avg=%.1f|p90=%d|p95=%d|p99=%d|f=%lu|fnz=%lu|",
             totalCount_, nonZeroCount_, getAverageJitter(),
-            getPercentile(90), getPercentile(95), getPercentile(99));
+            getPercentile(90), getPercentile(95), getPercentile(99),
+            frameCount_, nonZeroFrameCount_);
         
         bool first = true;
         for (int i = 0; i < NUM_BUCKETS && pos < bufSize - 1; i++) {
@@ -143,9 +159,10 @@ public:
         
         // Append daily history
         for (int d = 0; d < historyCount_ && pos < bufSize - 1; d++) {
-            pos += snprintf(buf + pos, bufSize - pos, "||%lu,%lu,%.1f,%d,%d,%d",
+            pos += snprintf(buf + pos, bufSize - pos, "||%lu,%lu,%.1f,%d,%d,%d,%lu,%lu",
                 history_[d].n, history_[d].nz, history_[d].avg,
-                history_[d].p90, history_[d].p95, history_[d].p99);
+                history_[d].p90, history_[d].p95, history_[d].p99,
+                history_[d].frames, history_[d].nzFrames);
         }
         return pos;
     }
@@ -157,6 +174,9 @@ public:
         totalCount_ = 0;
         nonZeroCount_ = 0;
         jitterSumMs_ = 0;
+        frameCount_ = 0;
+        nonZeroFrameCount_ = 0;
+        frameHadNonZero_ = false;
         resetThisMinute_ = false;
     }
 
@@ -165,6 +185,9 @@ private:
     unsigned long totalCount_;
     unsigned long nonZeroCount_;
     unsigned long jitterSumMs_;
+    unsigned long frameCount_;
+    unsigned long nonZeroFrameCount_;
+    bool frameHadNonZero_;
     bool resetThisMinute_;
     DailySummary history_[HISTORY_DAYS];
     int historyCount_;
