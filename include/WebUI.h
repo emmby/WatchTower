@@ -111,14 +111,20 @@ public:
         strftime(buf, sizeof(buf), "%A, %B %d %Y (Day %j) UTC", &utc);
         ESPUI.print(_ui_date_utc, buf);
 
-        // Broadcast window
-        for (int i = 0; i < 60; ++i) { // TODO leap seconds
-            switch (broadcast[i]) {
-                case TimeCodeSymbol::MARK: buf[i] = 'M'; break;
-                case TimeCodeSymbol::ZERO: buf[i] = '0'; break;
-                case TimeCodeSymbol::ONE:  buf[i] = '1'; break;
-                case TimeCodeSymbol::IDLE: buf[i] = '-'; break;
-                default:                   buf[i] = ' '; break;
+        // Broadcast window — only show seconds that have already been transmitted.
+        // Future seconds are shown as spaces (stable 60-column table layout).
+        int sec = utc.tm_sec;
+        for (int i = 0; i < 60; ++i) {
+            if (i <= sec) {
+                switch (broadcast[i]) {
+                    case TimeCodeSymbol::MARK: buf[i] = 'M'; break;
+                    case TimeCodeSymbol::ZERO: buf[i] = '0'; break;
+                    case TimeCodeSymbol::ONE:  buf[i] = '1'; break;
+                    case TimeCodeSymbol::IDLE: buf[i] = '-'; break;
+                    default:                   buf[i] = ' '; break;
+                }
+            } else {
+                buf[i] = ' ';
             }
         }
         buf[60] = '\0';
