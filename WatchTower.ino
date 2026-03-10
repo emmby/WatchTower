@@ -37,7 +37,7 @@ const int PIN_ANTENNA = 13;
 // Set to your timezone.
 // This is needed for computing DST if applicable
 // https://gist.github.com/alwynallan/24d96091655391107939
-const char *timezone = "PST8PDT,M3.2.0,M11.1.0"; // America/Los_Angeles
+const char *TIMEZONE = "PST8PDT,M3.2.0,M11.1.0"; // America/Los_Angeles
 
 // ========================
 // Includes
@@ -193,7 +193,7 @@ void setup() {
 
   // --- WEB UI SETUP ---
   if( ENABLE_WEB_UI ) {
-    webUI.begin(timezone, signalGenerator,
+    webUI.begin(TIMEZONE, signalGenerator,
                 wwvb, dcf77, msf, jjy,
                 preferences, PIN_ANTENNA, ntpServer,
                 networkSyncEnabled, lastSync, mdns);
@@ -206,11 +206,11 @@ void setup() {
   sntp_set_time_sync_notification_cb(time_sync_notification_cb);
   
   if (networkSyncEnabled) {
-      configTzTime(timezone, ntpServer);
+      configTzTime(TIMEZONE, ntpServer);
   } else {
       // When network sync is disabled, we still need to configure the timezone
       // so that localtime() works correctly.
-      setenv("TZ", timezone, 1);
+      setenv("TZ", TIMEZONE, 1);
       tzset();
   }
   
