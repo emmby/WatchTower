@@ -68,7 +68,7 @@ WWVBSignal wwvb;
 DCF77Signal dcf77;
 MSFSignal msf;
 JJYSignal jjy;
-RadioTimeSignal* signalGenerator = &wwvb;
+RadioTimeSignal* signalGenerator = &wwvb; // active protocol encoder
 
 StatusLED statusLED;
 WebUI webUI;
@@ -76,19 +76,20 @@ WiFiManager wifiManager;
 WiFiUDP udp;
 MDNS mdns(udp);
 Preferences preferences;
-bool logicValue = 0; // TODO rename
-unsigned long lastSync = 0;
-bool networkSyncEnabled = true;
+bool logicValue = 0; // current PWM output level (high/low)
+unsigned long lastSync = 0; // millis() timestamp of last NTP sync
+bool networkSyncEnabled = true; // false when user disables NTP
 const char* const ntpServer = "pool.ntp.org";
-esp_timer_handle_t signalTimer = nullptr;
+esp_timer_handle_t signalTimer = nullptr; // 1ms high-priority timer for PWM output
 
-// Shared state between timer callback and loop()
+// Double-buffered broadcast data shared between loop() and the timer ISR.
+// loop() writes the inactive buffer then swaps the pointer atomically.
 TimeCodeSymbol broadcastA[60];
 TimeCodeSymbol broadcastB[60];
-volatile const TimeCodeSymbol* activeBroadcast = broadcastA;
-volatile bool transitionOccurred = false;
-volatile unsigned long lastTransitionUsec = 0;
-volatile int lastTransitionSecond = 0;
+volatile const TimeCodeSymbol* activeBroadcast = broadcastA; // pointer to the currently active buffer
+volatile bool transitionOccurred = false; // set by ISR to notify loop() of a PWM edge
+volatile unsigned long lastTransitionUsec = 0; // microsecond timestamp of the last PWM edge
+volatile int lastTransitionSecond = 0; // second (0-59) of the last PWM edge
 
 // ========================
 // Helpers
@@ -100,6 +101,8 @@ static inline short dutyCycle(bool logicValue) {
   return logicValue ? (256*0.5) : 0; // 128 == 50% duty cycle
 }
 
+// Reset all broadcast buffer slots to an invalid sentinel value
+// so stale data is never accidentally transmitted.
 void clearBroadcastValues(TimeCodeSymbol* buf) {
     for(int i=0; i<60; ++i) {
         buf[i] = (TimeCodeSymbol)-1; // -1 isn't legal but that's okay, we just need an invalid value
