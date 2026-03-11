@@ -1,4 +1,7 @@
+// ========================
 // INSTRUCTIONS
+// ========================
+
 // - Add the following dependencies to your Arduino libraries:
 //     - Adafruit NeoPixel ~1.15.2
 //     - ESPUI ~2.2.4
@@ -7,7 +10,7 @@
 //     - WiFiManager ~2.0.17
 //     - ArduinoMDNS ~1.0.0
 // - set the PIN_ANTENNA to desired output pin
-// - set the timezone as desired
+// - set the TIMEZONE as desired
 // - build and run the code on your device
 // - connect your phone to "WatchTower" to set the wifi config for the device
 // - connect to http://watchtower.local to view current status
@@ -20,15 +23,9 @@
 // - Adafruit ESP32 Feather v2
 // - Arduino Nano ESP32 (via wokwi)
 
-#include <WiFiManager.h>
-#include <Adafruit_NeoPixel.h>
-#include <SPI.h>
-#include <ESPUI.h>
-#include <WiFiUdp.h>
-#include <ArduinoMDNS.h>
-#include <time.h>
-#include <esp_sntp.h>
-#include "customJS.h"
+// ========================
+// Configuration
+// ========================
 
 // Flip to false to disable the built-in web ui.
 // You might want to do this to avoid leaving unnecessary open ports on your network.
@@ -40,50 +37,83 @@ const int PIN_ANTENNA = 13;
 // Set to your timezone.
 // This is needed for computing DST if applicable
 // https://gist.github.com/alwynallan/24d96091655391107939
-const char *timezone = "PST8PDT,M3.2.0,M11.1.0"; // America/Los_Angeles
+const char *TIMEZONE = "PST8PDT,M3.2.0,M11.1.0"; // America/Los_Angeles
+
+// ========================
+// Includes
+// ========================
+
+#include <WiFiManager.h>
+#include "include/StatusLED.h"
+#include <SPI.h>
+#include <WiFiUdp.h>
+#include <ArduinoMDNS.h>
+#include <time.h>
+#include <esp_sntp.h>
+#include <Preferences.h>
+#include "include/RadioTimeSignal.h"
+#include "include/WWVBSignal.h"
+#include "include/DCF77Signal.h"
+#include "include/MSFSignal.h"
+#include "include/JJYSignal.h"
+#include "include/WebUI.h"
 
 
-enum WWVB_T {
-  ZERO = 0,
-  ONE = 1,
-  MARK = 2,
-};
+// ========================
+// Globals
+// ========================
 
-const int KHZ_60 = 60000;
-const char* const ntpServer = "pool.ntp.org";
+// Default to WWVB if no signal is specified
+WWVBSignal wwvb;
+DCF77Signal dcf77;
+MSFSignal msf;
+JJYSignal jjy;
+RadioTimeSignal* signalGenerator = &wwvb;
 
-// Configure the optional onboard neopixel
-#ifdef PIN_NEOPIXEL
-Adafruit_NeoPixel* const pixel = new Adafruit_NeoPixel(1, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800);
-#else
-Adafruit_NeoPixel* const pixel = NULL;
-#endif
-
-const uint8_t LED_BRIGHTNESS = 10; // very dim, 0-255
-const uint32_t COLOR_READY = pixel ? pixel->Color(0, 60, 0) : 0; // green https://share.google/4WKm4XDkH9tfm3ESC
-const uint32_t COLOR_LOADING = pixel ? pixel->Color(60, 32, 0) : 0; // orange https://share.google/7tT5GPxskZi8t8qmx
-const uint32_t COLOR_ERROR = pixel ? pixel->Color(150, 0, 0) : 0; // red https://share.google/nx2jWYSoGtl0opkzL
-const uint32_t COLOR_TRANSMIT = pixel ? pixel->Color(32, 0, 0) : 0; // dim red https://share.google/wYFYM3t1kDeOJfr1U
-
+StatusLED statusLED;
+WebUI webUI;
 WiFiManager wifiManager;
 WiFiUDP udp;
 MDNS mdns(udp);
+Preferences preferences;
 bool logicValue = 0; // TODO rename
-struct timeval lastSync;
-WWVB_T broadcast[60];
+unsigned long lastSync = 0;
+bool networkSyncEnabled = true;
+const char* const ntpServer = "pool.ntp.org";
+esp_timer_handle_t signalTimer = nullptr;
 
-// ESPUI Interface IDs
-uint16_t ui_time;
-uint16_t ui_date;
-uint16_t ui_timezone;
-uint16_t ui_broadcast;
-uint16_t ui_uptime;
-uint16_t ui_last_sync;
+// Shared state between timer callback and loop()
+TimeCodeSymbol broadcastA[60];
+TimeCodeSymbol broadcastB[60];
+volatile const TimeCodeSymbol* activeBroadcast = broadcastA;
+volatile bool transitionOccurred = false;
+volatile unsigned long lastTransitionUsec = 0;
+volatile int lastTransitionSecond = 0;
+
+// ========================
+// Helpers
+// ========================
+
+// Convert a logical bit into a PWM pulse width.
+// Returns 50% duty cycle (128) for high, 0% for low
+static inline short dutyCycle(bool logicValue) {
+  return logicValue ? (256*0.5) : 0; // 128 == 50% duty cycle
+}
+
+void clearBroadcastValues(TimeCodeSymbol* buf) {
+    for(int i=0; i<60; ++i) {
+        buf[i] = (TimeCodeSymbol)-1; // -1 isn't legal but that's okay, we just need an invalid value
+    }
+}
+
+// ========================
+// Callbacks
+// ========================
 
 // A callback that tracks when we last sync'ed the
 // time with the ntp server
 void time_sync_notification_cb(struct timeval *tv) {
-  lastSync = *tv;
+  lastSync = millis();
 }
 
 // A callback that is called when the device
@@ -93,33 +123,50 @@ void accesspointCallback(WiFiManager*) {
   Serial.println("Connect to SSID: WatchTower with another device to set wifi configuration.");
 }
 
-// Convert a logical bit into a PWM pulse width.
-// Returns 50% duty cycle (128) for high, 0% for low
-static inline short dutyCycle(bool logicValue) {
-  return logicValue ? (256*0.5) : 0; // 128 == 50% duty cycle
-}
-
-static inline int is_leap_year(int year) {
-    return (year % 4 == 0) && (year % 100 != 0 || year % 400 == 0);
-}
-
-void clearBroadcastValues() {
-    for(int i=0; i<sizeof(broadcast)/sizeof(broadcast[0]); ++i) {
-        broadcast[i] = (WWVB_T)-1; // -1 isn't legal but that's okay, we just need an invalid value
+/**
+ * High-priority timer callback (runs every 1ms).
+ * Reads the RTC, looks up the pre-computed bit, and updates the PWM pin.
+ * This runs at higher priority than WiFi/ESPUI, eliminating network-induced jitter.
+ *
+ * The signal is generated in two parts:
+ *  1. loop() encodes the current minute's 60-bit frame into a broadcast[60] buffer
+ *     using the signal generator (WWVB, DCF77, MSF, or JJY). This involves
+ *     timezone lookups and daylight savings calculations that are too heavy for an
+ *     interrupt service routine (ISR).
+ *  2. A high-priority esp_timer callback (onSignalTimer, every 1ms) reads the
+ *     pre-computed broadcast buffer, determines the correct pulse-width modulation (PWM)
+ *     level for the current time, and writes it to the antenna pin.
+ * This ensures the PWM output is always on time, even when WiFi, ESPUI, or
+ * other background tasks delay loop(). A double-buffer is used so the timer
+ * always reads from a fully-written buffer.
+ */
+void onSignalTimer(void* arg) {
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    int sec = now.tv_sec % 60;
+    const TimeCodeSymbol* bits = const_cast<const TimeCodeSymbol*>(activeBroadcast);
+    bool level = signalGenerator->getLevelForTimeCodeSymbol(
+        bits[sec], now.tv_usec / 1000);
+    if (level != logicValue) {
+        ledcWrite(PIN_ANTENNA, dutyCycle(level));
+        logicValue = level;
+        lastTransitionUsec = now.tv_usec;
+        lastTransitionSecond = sec;
+        transitionOccurred = true;
     }
 }
+
+// ========================
+// Arduino Setup & Loop
+// ========================
 
 void setup() {
   Serial.begin(115200);
   delay(1000);
 
   pinMode(PIN_ANTENNA, OUTPUT);
-  if( pixel ) {
-    pixel->begin();
-    pixel->setBrightness(LED_BRIGHTNESS); // very dim
-    pixel->setPixelColor(0, COLOR_LOADING );
-    pixel->show();
-  }
+  statusLED.begin();
+  statusLED.setLoading();
 
   // E (14621) rmt: rmt_new_tx_channel(269): not able to power down in light sleep
   digitalWrite(PIN_ANTENNA, 0);
@@ -133,28 +180,23 @@ void setup() {
   wifiManager.setAPCallback(accesspointCallback);
   wifiManager.autoConnect("WatchTower");
 
-  clearBroadcastValues();
+  preferences.begin("watchtower", false);
+  networkSyncEnabled = preferences.getBool("net_sync", true);
+  String savedSignal = preferences.getString("signal", "WWVB");
+  if (savedSignal == "DCF77") signalGenerator = &dcf77;
+  else if (savedSignal == "MSF") signalGenerator = &msf;
+  else if (savedSignal == "JJY") signalGenerator = &jjy;
+  else signalGenerator = &wwvb;
 
-  // --- ESPUI SETUP ---
-  ESPUI.setVerbosity(Verbosity::Quiet);
-  
-  // Create Labels
-  ui_broadcast = ESPUI.label("Broadcast Waveform", ControlColor::Sunflower, "");
-  ui_time = ESPUI.label("Current Time", ControlColor::Turquoise, "Loading...");
-  ui_date = ESPUI.label("Date", ControlColor::Emerald, "Loading...");
-  ui_timezone = ESPUI.label("Timezone", ControlColor::Peterriver, timezone);
-  ui_uptime = ESPUI.label("System Uptime", ControlColor::Carrot, "0s");
-  ui_last_sync = ESPUI.label("Last NTP Sync", ControlColor::Alizarin, "Pending...");
+  clearBroadcastValues(broadcastA);
+  clearBroadcastValues(broadcastB);
 
-  ESPUI.setPanelWide(ui_broadcast, true);
-  ESPUI.setElementStyle(ui_broadcast, "font-family: monospace");
-  ESPUI.setCustomJS(customJS);
-
-  // You may disable the internal webserver by commenting out this line
+  // --- WEB UI SETUP ---
   if( ENABLE_WEB_UI ) {
-    mdns.begin(WiFi.localIP(), "watchtower");
-    Serial.println("Connect to http://watchtower.local for the console");
-    ESPUI.begin("WatchTower");
+    webUI.begin(TIMEZONE, signalGenerator,
+                wwvb, dcf77, msf, jjy,
+                preferences, PIN_ANTENNA, ntpServer,
+                networkSyncEnabled, lastSync, mdns);
   }
   
   // --- TIME SYNC ---
@@ -162,31 +204,47 @@ void setup() {
   // Connect to network time server
   // By default, it will resync every few hours
   sntp_set_time_sync_notification_cb(time_sync_notification_cb);
-  configTzTime(timezone, ntpServer);
+  
+  if (networkSyncEnabled) {
+      configTzTime(TIMEZONE, ntpServer);
+  } else {
+      // When network sync is disabled, we still need to configure the timezone
+      // so that localtime() works correctly.
+      setenv("TZ", TIMEZONE, 1);
+      tzset();
+  }
   
   struct tm timeinfo;
-  if(!getLocalTime(&timeinfo)){
-    Serial.println("Failed to obtain time");
-    if( pixel ) {
-        pixel->setPixelColor(0, COLOR_ERROR );
-        pixel->show();
+  // Only block on time if sync is enabled
+  if (networkSyncEnabled) {
+    if (getLocalTime(&timeinfo)) {
+      Serial.println("Got the time from NTP");
+    } else {
+      Serial.println("Failed to obtain time");
+      statusLED.setError();
+      delay(3000);
+      ESP.restart();
     }
-    delay(3000);
-    ESP.restart();
+  } else {
+      Serial.println("Network sync disabled, skipping initial time check.");
   }
-  Serial.println("Got the time from NTP");
 
-  // Start the 60khz carrier signal using 8-bit (0-255) resolution
-  ledcAttach(PIN_ANTENNA, KHZ_60, 8);
+  // Start the carrier signal using 8-bit (0-255) resolution
+  ledcAttach(PIN_ANTENNA, signalGenerator->getFrequency(), 8);
 
-  // green means go
-  if( pixel ) {
-    pixel->setPixelColor(0, COLOR_READY );
-    pixel->show();
-    delay(3000);
-    pixel->clear();  
-    pixel->show();
-  }
+  statusLED.setReady();
+
+  // Start the high-priority signal timer (1ms interval).
+  // This ensures PWM transitions happen on time regardless of WiFi/ESPUI activity.
+  const esp_timer_create_args_t timerArgs = {
+      .callback = onSignalTimer,
+      .arg = NULL,
+      .dispatch_method = ESP_TIMER_TASK,
+      .name = "signal_timer"
+  };
+  esp_timer_create(&timerArgs, &signalTimer);
+  esp_timer_start_periodic(signalTimer, 1000);  // 1ms = 1000us
+  Serial.println("Signal timer started (1ms interval)");
 }
 
 void loop() {
@@ -214,31 +272,30 @@ void loop() {
   tomorrow_start.tv_sec = ((tomorrow_start.tv_sec / 86400) + 1) * 86400; // again, close enough
   localtime_r(&tomorrow_start.tv_sec, &buf_tomorrow_start);
 
-  const bool prevLogicValue = logicValue;
-
-  logicValue = wwvbLogicSignal(
-    buf_now_utc.tm_hour,
-    buf_now_utc.tm_min,
-    buf_now_utc.tm_sec, 
-    now.tv_usec/1000,
-    buf_now_utc.tm_yday+1,
-    buf_now_utc.tm_year+1900,
-    buf_today_start.tm_isdst,
-    buf_tomorrow_start.tm_isdst
-    );
-
-  // --- UI UPDATE LOGIC ---
-  if( logicValue != prevLogicValue ) {
-    ledcWrite(PIN_ANTENNA, dutyCycle(logicValue));  // Update the duty cycle of the PWM
-
-    // light up the pixel if desired
-    if( pixel ) {
-      if( logicValue == 1 ) {
-        pixel->setPixelColor(0, COLOR_TRANSMIT ); // don't call show yet, the color may change
-      } else {
-        pixel->clear();
-      }
+    static int prevMinute = -1;
+    if (buf_now_utc.tm_min != prevMinute) {
+        prevMinute = buf_now_utc.tm_min;
+        // Write to the INACTIVE buffer, then swap
+        TimeCodeSymbol* inactive = (activeBroadcast == broadcastA) ? broadcastB : broadcastA;
+        clearBroadcastValues(inactive);
+        signalGenerator->encodeMinute(
+            buf_now_utc,
+            buf_today_start.tm_isdst,
+            buf_tomorrow_start.tm_isdst
+        );
+        for (int s = 0; s < 60; s++) {
+            inactive[s] = signalGenerator->getSymbolForSecond(s);
+        }
+        activeBroadcast = inactive;  // atomic pointer swap
     }
+
+
+  // --- HANDLE TRANSITIONS DETECTED BY TIMER CALLBACK ---
+  if( transitionOccurred ) {
+    transitionOccurred = false;
+    unsigned long usec = lastTransitionUsec;
+
+    statusLED.setTransmitting(logicValue);
 
     // do any logging after we set the bit to not slow anything down,
     // serial port I/O is slow!
@@ -247,293 +304,36 @@ void loop() {
     char timeStringBuff3[20];
     strftime(timeStringBuff, sizeof(timeStringBuff), "%A, %B %d %Y %H:%M:%S", &buf_now_local); // time
     strftime(timeStringBuff3, sizeof(timeStringBuff3), "%z %Z", &buf_now_local); // timezone
-    sprintf(timeStringBuff2,"%s.%03d%s", timeStringBuff, now.tv_usec/1000, timeStringBuff3 ); // time+millis+tz
+    snprintf(timeStringBuff2, sizeof(timeStringBuff2), "%s.%03d%s", timeStringBuff, now.tv_usec/1000, timeStringBuff3 ); // time+millis+tz
 
     char lastSyncStringBuff[100]; // Buffer to hold the formatted time string
-    struct tm buf_lastSync;
-    localtime_r(&lastSync.tv_sec, &buf_lastSync);
-    strftime(lastSyncStringBuff, sizeof(lastSyncStringBuff), "%b %d %H:%M", &buf_lastSync);
+    if (lastSync == 0) {
+        snprintf(lastSyncStringBuff, sizeof(lastSyncStringBuff), "Never");
+    } else {
+        unsigned long secondsSinceSync = (millis() - lastSync) / 1000;
+        snprintf(lastSyncStringBuff, sizeof(lastSyncStringBuff), "%lus ago", secondsSinceSync);
+    }
     Serial.printf("%s [last sync %s]: %s\n",timeStringBuff2, lastSyncStringBuff, logicValue ? "1" : "0");
 
+
     static int prevSecond = -1;
-    if( prevSecond != buf_now_utc.tm_sec ) {
+    if( ENABLE_WEB_UI && prevSecond != buf_now_utc.tm_sec ) {
         prevSecond = buf_now_utc.tm_sec;
-
-        // --- UPDATE THE WEB UI ---
-
-        // Time
-        char buf[62];
-        strftime(buf, sizeof(buf), "%H:%M:%S%z %Z", &buf_now_local);
-        ESPUI.print(ui_time, buf);
-
-        // Date
-        strftime(buf, sizeof(buf), "%A, %B %d %Y", &buf_now_local);
-        ESPUI.print(ui_date, buf);
-
-        // Broadcast window
-        for( int i=0; i<60; ++i ) { // TODO leap seconds
-        switch(broadcast[i]) {
-            case WWVB_T::MARK:
-                buf[i] = 'M';
-                break;
-            case WWVB_T::ZERO:
-                buf[i] = '0';
-                break;
-            case WWVB_T::ONE:
-                buf[i] = '1';
-                break;
-            default:
-                buf[i] = ' ';
-                break;
-        }
-        }
-        ESPUI.print(ui_broadcast, buf);
-
-
-        // Uptime
-        long uptime = millis() / 1000;
-        int up_d = uptime / 86400;
-        int up_h = (uptime % 86400) / 3600;
-        int up_m = (uptime % 3600) / 60;
-        int up_s = uptime % 60;
-        snprintf(buf, sizeof(buf), "%03dd %02dh %02dm %02ds", up_d, up_h, up_m, up_s);
-        ESPUI.print(ui_uptime, buf);
-
-        // Last Sync
-        strftime(buf, sizeof(buf), "%b %d %H:%M", &buf_lastSync);
-        ESPUI.print(ui_last_sync, buf);
+        webUI.update(buf_now_local, buf_now_utc, lastSync, activeBroadcast);
     }
 
     // Check for stale sync (24 hours)
-    if( now.tv_sec - lastSync.tv_sec > 60 * 60 * 24 ) {
+    // Only restart if it's past 12pm local time to avoid rebooting while a device is syncing
+    if( networkSyncEnabled && (millis() - lastSync > 24 * 60 * 60 * 1000) && buf_now_local.tm_hour >= 12 ) {
       Serial.println("Last sync more than 24 hours ago, rebooting.");
-      if( pixel ) {
-        pixel->setPixelColor(0, COLOR_ERROR );
-        delay(3000);
-      }
+      statusLED.setError();
+      delay(3000);
       ESP.restart();
     }
 
-    if( pixel ) {
-        pixel->show();
-    }
+    statusLED.show();
   }  
 }
 
 
-// Returns a logical high or low to indicate whether the
-// PWM signal should be high or low based on the current time
-// https://www.nist.gov/pml/time-and-frequency-division/time-distribution/radio-station-wwvb/wwvb-time-code-format
-bool wwvbLogicSignal(
-    int hour,                // 0 - 23
-    int minute,              // 0 - 59
-    int second,              // 0 - 59 (leap 60)
-    int millis,
-    int yday,                // days since January 1 eg. Jan 1 is 0
-    int year,                // year since 0, eg. 2025
-    int today_start_isdst,   // was this morning DST?
-    int tomorrow_start_isdst // is tomorrow morning DST?
-) {
-    int leap = is_leap_year(year);
-    
-    WWVB_T bit;
-    switch (second) {
-        case 0: // mark
-            bit = WWVB_T::MARK;
-            break;
-        case 1: // minute 40
-            bit = (WWVB_T)(((minute / 10) >> 2) & 1);
-            break;
-        case 2: // minute 20
-            bit = (WWVB_T)(((minute / 10) >> 1) & 1);
-            break;
-        case 3: // minute 10
-            bit = (WWVB_T)(((minute / 10) >> 0) & 1);
-            break;
-        case 4: // blank
-            bit = WWVB_T::ZERO;
-            break;
-        case 5: // minute 8
-            bit = (WWVB_T)(((minute % 10) >> 3) & 1);
-            break;
-        case 6: // minute 4
-            bit = (WWVB_T)(((minute % 10) >> 2) & 1);
-            break;
-        case 7: // minute 2
-            bit = (WWVB_T)(((minute % 10) >> 1) & 1);
-            break;
-        case 8: // minute 1
-            bit = (WWVB_T)(((minute % 10) >> 0) & 1);
-            break;
-        case 9: // mark
-            bit = WWVB_T::MARK;
-            break;
-        case 10: // blank
-            bit = WWVB_T::ZERO;
-            break;
-        case 11: // blank
-            bit = WWVB_T::ZERO;
-            break;
-        case 12: // hour 20
-            bit = (WWVB_T)(((hour / 10) >> 1) & 1);
-            break;
-        case 13: // hour 10
-            bit = (WWVB_T)(((hour / 10) >> 0) & 1);
-            break;
-        case 14: // blank
-            bit = WWVB_T::ZERO;
-            break;
-        case 15: // hour 8
-            bit = (WWVB_T)(((hour % 10) >> 3) & 1);
-            break;
-        case 16: // hour 4
-            bit = (WWVB_T)(((hour % 10) >> 2) & 1);
-            break;
-        case 17: // hour 2
-            bit = (WWVB_T)(((hour % 10) >> 1) & 1);
-            break;
-        case 18: // hour 1
-            bit = (WWVB_T)(((hour % 10) >> 0) & 1);
-            break;
-        case 19: // mark
-            bit = WWVB_T::MARK;
-            break;
-        case 20: // blank
-            bit = WWVB_T::ZERO;
-            break;
-        case 21: // blank
-            bit = WWVB_T::ZERO;
-            break;
-        case 22: // yday of year 200
-            bit = (WWVB_T)(((yday / 100) >> 1) & 1);
-            break;
-        case 23: // yday of year 100
-            bit = (WWVB_T)(((yday / 100) >> 0) & 1);
-            break;
-        case 24: // blank
-            bit = WWVB_T::ZERO;
-            break;
-        case 25: // yday of year 80
-            bit = (WWVB_T)((((yday / 10) % 10) >> 3) & 1);
-            break;
-        case 26: // yday of year 40
-            bit = (WWVB_T)((((yday / 10) % 10) >> 2) & 1);
-            break;
-        case 27: // yday of year 20
-            bit = (WWVB_T)((((yday / 10) % 10) >> 1) & 1);
-            break;
-        case 28: // yday of year 10
-            bit = (WWVB_T)((((yday / 10) % 10) >> 0) & 1);
-            break;
-        case 29: // mark
-            bit = WWVB_T::MARK;
-            break;
-        case 30: // yday of year 8
-            bit = (WWVB_T)(((yday % 10) >> 3) & 1);
-            break;
-        case 31: // yday of year 4
-            bit = (WWVB_T)(((yday % 10) >> 2) & 1);
-            break;
-        case 32: // yday of year 2
-            bit = (WWVB_T)(((yday % 10) >> 1) & 1);
-            break;
-        case 33: // yday of year 1
-            bit = (WWVB_T)(((yday % 10) >> 0) & 1);
-            break;
-        case 34: // blank
-            bit = WWVB_T::ZERO;
-            break;
-        case 35: // blank
-            bit = WWVB_T::ZERO;
-            break;
-        case 36: // UTI sign +
-            bit = WWVB_T::ONE;
-            break;
-        case 37: // UTI sign -
-            bit = WWVB_T::ZERO;
-            break;
-        case 38: // UTI sign +
-            bit = WWVB_T::ONE;
-            break;
-        case 39: // mark
-            bit = WWVB_T::MARK;
-            break;
-        case 40: // UTI correction 0.8
-            bit = WWVB_T::ZERO;
-            break;
-        case 41: // UTI correction 0.4
-            bit = WWVB_T::ZERO;
-            break;
-        case 42: // UTI correction 0.2
-            bit = WWVB_T::ZERO;
-            break;
-        case 43: // UTI correction 0.1
-            bit = WWVB_T::ZERO;
-            break;
-        case 44: // blank
-            bit = WWVB_T::ZERO;
-            break;
-        case 45: // year 80
-            bit = (WWVB_T)((((year / 10) % 10) >> 3) & 1);
-            break;
-        case 46: // year 40
-            bit = (WWVB_T)((((year / 10) % 10) >> 2) & 1);
-            break;
-        case 47: // year 20
-            bit = (WWVB_T)((((year / 10) % 10) >> 1) & 1);
-            break;
-        case 48: // year 10
-            bit = (WWVB_T)((((year / 10) % 10) >> 0) & 1);
-            break;
-        case 49: // mark
-            bit = WWVB_T::MARK;
-            break;
-        case 50: // year 8
-            bit = (WWVB_T)(((year % 10) >> 3) & 1);
-            break;
-        case 51: // year 4
-            bit = (WWVB_T)(((year % 10) >> 2) & 1);
-            break;
-        case 52: // year 2
-            bit = (WWVB_T)(((year % 10) >> 1) & 1);
-            break;
-        case 53: // year 1
-            bit = (WWVB_T)(((year % 10) >> 0) & 1);
-            break;
-        case 54: // blank
-            bit = WWVB_T::ZERO;
-            break;
-        case 55: // leap year
-            bit = leap ? WWVB_T::ONE : WWVB_T::ZERO;
-            break;
-        case 56: // leap second
-            bit = WWVB_T::ZERO;
-            break;
-        case 57: // dst bit 1
-            bit = today_start_isdst ? WWVB_T::ONE : WWVB_T::ZERO;
-            break;
-        case 58: // dst bit 2
-            bit = tomorrow_start_isdst ? WWVB_T::ONE : WWVB_T::ZERO;
-            break;
-        case 59: // mark
-            bit = WWVB_T::MARK;
-            break;
-    }
 
-    if(second == 0) {
-        clearBroadcastValues();
-    }
-    broadcast[second] = bit;
-
-    // Convert a wwvb zero, one, or mark to the appropriate pulse width
-    // zero: low 200ms, high 800ms
-    // one: low 500ms, high 500ms
-    // mark low 800ms, high 200ms
-    if (bit == WWVB_T::ZERO) {
-      return millis >= 200;
-    } else if (bit == WWVB_T::ONE) {
-      return millis >= 500;
-    } else {
-      return millis >= 800;
-    }
-}
