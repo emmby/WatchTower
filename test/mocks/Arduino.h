@@ -21,10 +21,22 @@ public:
     IPAddress(uint8_t, uint8_t, uint8_t, uint8_t) {}
 };
 
+#include <string>
 class String {
 public:
-    String(const char* s = "") {}
-    String(int i) {}
+    std::string _s;
+    String(const char* s = "") : _s(s) {}
+    String(std::string s) : _s(s) {}
+    String(int i) : _s(std::to_string(i)) {}
+    const char* c_str() const { return _s.c_str(); }
+    size_t length() const { return _s.length(); }
+    String operator+(const String& other) const { return String(_s + other._s); }
+    String operator+(const char* other) const { return String(_s + other); }
+    friend String operator+(const char* lhs, const String& rhs) { return String(lhs + rhs._s); }
+    bool operator==(const String& other) const { return _s == other._s; }
+    bool operator==(const char* other) const { return _s == other; }
+    bool operator!=(const String& other) const { return _s != other._s; }
+    bool operator!=(const char* other) const { return _s != other; }
 };
 
 void delay(unsigned long ms);

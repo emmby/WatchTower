@@ -5,6 +5,18 @@ on: [push, pull_request]
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        signal: [WWVB, DCF77, MSF, JJY]
+        include:
+          - signal: WWVB
+            flags: ""
+          - signal: DCF77
+            flags: "-D SIGNAL_DCF77"
+          - signal: MSF
+            flags: "-D SIGNAL_MSF"
+          - signal: JJY
+            flags: "-D SIGNAL_JJY"
 
     steps:
       - uses: actions/checkout@v3
@@ -39,7 +51,11 @@ jobs:
         run: pio pkg install
 
       - name: Run Build
+        env:
+          PLATFORMIO_BUILD_FLAGS: ${{ matrix.flags }}
         run: pio run
 
       - name: Run Native Tests
+        env:
+          PLATFORMIO_BUILD_FLAGS: ${{ matrix.flags }}
         run: pio test -e native
