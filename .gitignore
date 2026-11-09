@@ -5,3 +5,4 @@
 .vscode/ipch
 .vscode/extensions.json
 WatchTower.ino.cpp
+.DS_Store

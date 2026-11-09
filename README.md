@@ -91,13 +91,13 @@ Now that you understand how it works, let’s build the transmitter!
 
 ## Components
 
-![](docs/IMG_1476.jpg)
+![Components](docs/IMG_1476.jpg)
 
 - An ESP32-based development board such as the AdaFruit QT Py ESP32, AdaFruit Feather ESP32 v2, Arduino Nano ESP32, Seeed Xiao ESP32C3 or similar. I used the [QT Py ESP32](https://www.adafruit.com/product/5395).
 - An H-bridge amplifier circuit. You can build your own, or I used the [Adafruit DRV8833 DC/Stepper Motor Driver Breakout Board](https://www.adafruit.com/product/3297). Boards using the TB6612 would probably also work, you just need something that can handle 5V or more, a few hundred milliamps and a switching frequency of 60khz or higher.
 - Two [60khz ferrite rod antennas](https://www.canaduino.ca/product/60khz-atomic-clock-receiver-v4-wwvb-msf-jjy60/). You can pull these from existing quartz radio-controlled movements, or I bought mine from Canaduino. (You can leave out the second antenna if you want, though using two at a 90 degree angle gives much better reception across different watch orientations.) Some users have had luck with a simple 20 inch length of straight copper wire, but I found the signal to be too weak to be reliable.
 - A **100µF 16V electrolytic capacitor** (47µF–220µF rated at 10V or higher also works) to buffer the amplifier power supply and absorb inductive flyback when driving the antennas from USB power.
-- Breadboard and [jumper wires](https://www.amazon.com/dp/B08YRGVYPV).
+- A breadboard (for prototyping) or [Adafruit 1/4-sized Perma-Proto](https://www.adafruit.com/product/589) (shown above, fits the 3D-printed enclosure), and [jumper wires](https://www.amazon.com/dp/B08YRGVYPV).
 - A 4-pin PCB Mount Screw Terminal Block connector to connect your antennas, something like [this](https://www.amazon.com/dp/B09F6TC7RP). Not strictly necessary but nice to have (or a 2-pin terminal if you only plan to use a single antenna).
 
 ## Optional
@@ -109,8 +109,6 @@ None of the following is necessary, but some of it might be nice to have.
 - **3D printer** if you would like to print the tower enclosure for your circuit.
 - **Permaboard** or **Perma-proto**. After you’ve prototyped your circuit you’ll want to move it to something more permanent. An [Adafruit 1/4-sized Perma-Proto](https://www.adafruit.com/product/589) is convenient because it matches a standard breadboard layout and fits directly into the 3D-printed enclosure without needing to be cut. Permaboard is more configurable but less convenient.
 - **Soldering iron**. If you’re using permaboard, you’ll need a soldering iron. I love the [Pinecil v2](https://pine64.com/product/pinecil-smart-mini-portable-soldering-iron/), it’s USB-powered, auto-sleep, nearly instant-on, open-source and temperature controlled.
-- **GPS module**. The nice thing about using module development boards like the Feather, Grove, Arduino, etc. is their support for additional modules. The [AdaFruit Ultimate GPS FeatherWing](https://www.adafruit.com/product/3133) pairs well with their Feather boards and includes an accurate RTC. If you go GPS, you don’t necessarily need a microcontroller with WiFi.
-- **LCD display**. This can be a nice touch and can make it easier to tell if your tower is working or not. I like the [Adafruit ESP32 TFT Feather](https://www.adafruit.com/product/5483) or similar. I made an earlier prototype with a screen that displayed the current time, but didn’t like the way the screen lit up my bedroom at night. You can also connect many external displays using the simple I2C connector on many dev boards.
 
 ## Instructions
 
