@@ -141,15 +141,25 @@ https://github.com/emmby/WatchTower
 
 Upload the Arduino sketch to your Arduino using the Arduino IDE.
 
-The LED will light up yellow/orange while connecting to WiFi. If you haven’t yet set your SSID, connect your phone to SSID: WWVB and follow the instructions to enter your wifi password.
+The LED will light up yellow/orange while connecting to WiFi. If you haven’t yet set your SSID, connect your phone to SSID: `WatchTower` and follow the instructions to enter your wifi password.
 
 Once the network is connected and the time has sync’d, the light will turn green briefly and then turn off.
+
+**Built-in Web UI (`http://watchtower.local`)**
+
+Once connected to WiFi, the Watch Tower hosts a built-in web dashboard accessible at `http://watchtower.local` (or via your board's local IP address). It displays:
+
+- **Broadcast Waveform**: A live 60-second visual waveform and table (`M`, `0`, `1` for seconds `00`–`59`) showing the current frame as it is transmitted in real time.
+- **Current Time**, **Date**, and configured **Timezone**.
+- **System Uptime** and **Last NTP Sync** timestamp.
+
+If you prefer not to run a web server on your local network, you can disable it by setting `ENABLE_WEB_UI = false` in `WatchTower.ino`.
 
 **Setup()**
 
 The Arduino setup() method does a few things.
 
-Initialize the components we’ll be using, particularly the serial port, LEDs, WiFi, output pins, timezone, and network time sync (NTP). The network time sync will happen automatically in the background every hour. This is important because the realtime clock (RTC) on most microcontrollers are notoriously subject to drift and are rarely accurate for more than a few hours.
+Initialize the components we’ll be using, particularly the serial port, LEDs, WiFi, mDNS + Web UI (`http://watchtower.local`), output pins, timezone, and network time sync (NTP). The network time sync will happen automatically in the background every hour. This is important because the realtime clock (RTC) on most microcontrollers are notoriously subject to drift and are rarely accurate for more than a few hours.
 
 Start the 60 kHz carrier wave at a 50% duty cycle.
 
@@ -161,6 +171,7 @@ Arduino then moves to the loop(), which continuously performs the following oper
 - Convert it to your local timezone to determine DST
 - Compute whether the 60 kHz carrier wave should be set to 50% (logical high) or 0% (logical low) for that specific moment in time. Time is always UTC, except for the DST bit which is relative to your local timezone.
 - Set the PIN_ANTENNA to high or low based on that value.
+- Update the Web UI (`http://watchtower.local`) once per second with the latest time, uptime, and broadcast waveform.
 - [Optional] you can flash the led for high/low PWM. This is nice for making sure things are working, but it’s grounds for divorce in the bedroom.
 
 Do some other nice-to-haves like logging, setting LEDs and/or rebooting when there are issues.
