@@ -324,6 +324,15 @@ void test_stale_sync_reboots_at_or_after_noon(void) {
     TEST_ASSERT_EQUAL_INT(1, ESP.restartCount);
 }
 
+void test_custom_js_wwvb_groups(void) {
+    TEST_ASSERT_NOT_NULL(strstr(customJS, "{ label: 'Minutes', start: 1, end: 8"));
+    TEST_ASSERT_NOT_NULL(strstr(customJS, "{ label: 'Hours', start: 12, end: 18"));
+    TEST_ASSERT_NOT_NULL(strstr(customJS, "{ label: 'Day of year', start: 22, end: 33"));
+    TEST_ASSERT_NOT_NULL(strstr(customJS, "{ label: 'Year', start: 45, end: 53"));
+    TEST_ASSERT_NOT_NULL(strstr(customJS, "{ label: 'LY', start: 55, end: 55, decode: { '0': 'No', '1': 'Yes' } }"));
+    TEST_ASSERT_NOT_NULL(strstr(customJS, "{ label: 'DST', start: 57, end: 58, weights: {57:'D1', 58:'D2'}, decode: { '00': 'Std', '10': 'Begins', '11': 'DST', '01': 'Ends' } }"));
+}
+
 int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_setup_completes);
@@ -335,6 +344,7 @@ int main(int argc, char **argv) {
     RUN_TEST(test_broadcast_ui_string_is_null_terminated_at_60);
     RUN_TEST(test_stale_sync_does_not_reboot_before_noon);
     RUN_TEST(test_stale_sync_reboots_at_or_after_noon);
+    RUN_TEST(test_custom_js_wwvb_groups);
     UNITY_END();
     return 0;
 }
