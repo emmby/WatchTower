@@ -3,7 +3,8 @@
 
 class EspClass {
 public:
-    void restart() {}
+    int restartCount = 0;
+    void restart() { restartCount++; }
 };
 
 extern EspClass ESP;

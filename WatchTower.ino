@@ -28,6 +28,7 @@
 #include <ArduinoMDNS.h>
 #include <time.h>
 #include <esp_sntp.h>
+#include <esp_timer.h>
 #include "customJS.h"
 
 // Flip to false to disable the built-in web ui.
@@ -68,7 +69,11 @@ const uint32_t COLOR_TRANSMIT = pixel ? pixel->Color(32, 0, 0) : 0; // dim red h
 WiFiManager wifiManager;
 WiFiUDP udp;
 MDNS mdns(udp);
-bool logicValue = 0; // TODO rename
+volatile bool logicValue = 0; // current PWM output level (high/low)
+volatile bool transitionOccurred = false; // set by timer callback on a PWM edge
+volatile int today_start_isdst = 0;
+volatile int tomorrow_start_isdst = 0;
+esp_timer_handle_t signalTimer = nullptr; // 1ms high-priority timer for PWM output
 struct timeval lastSync;
 WWVB_T broadcast[60];
 
@@ -106,6 +111,42 @@ static inline int is_leap_year(int year) {
 void clearBroadcastValues() {
     for(int i=0; i<sizeof(broadcast)/sizeof(broadcast[0]); ++i) {
         broadcast[i] = (WWVB_T)-1; // -1 isn't legal but that's okay, we just need an invalid value
+    }
+}
+
+void updateDstFlags(time_t now_sec) {
+    struct tm buf_today_start, buf_tomorrow_start;
+    time_t today_sec = (now_sec / 86400) * 86400; // This is not exact but close enough
+    time_t tomorrow_sec = ((now_sec / 86400) + 1) * 86400; // again, close enough
+    localtime_r(&today_sec, &buf_today_start);
+    localtime_r(&tomorrow_sec, &buf_tomorrow_start);
+    today_start_isdst = buf_today_start.tm_isdst;
+    tomorrow_start_isdst = buf_tomorrow_start.tm_isdst;
+}
+
+// High-priority timer callback (runs every 1ms).
+// Reads the RTC, computes the current WWVB bit and PWM level, and updates the antenna pin.
+// This runs at higher priority than WiFi/ESPUI/mDNS, eliminating network-induced jitter.
+void onSignalTimer(void* arg) {
+    struct timeval now;
+    struct tm buf_now_utc;
+    gettimeofday(&now, NULL);
+    gmtime_r(&now.tv_sec, &buf_now_utc);
+
+    bool level = wwvbLogicSignal(
+        buf_now_utc.tm_hour,
+        buf_now_utc.tm_min,
+        buf_now_utc.tm_sec,
+        now.tv_usec / 1000,
+        buf_now_utc.tm_yday + 1,
+        buf_now_utc.tm_year + 1900,
+        today_start_isdst,
+        tomorrow_start_isdst
+    );
+    if (level != logicValue) {
+        ledcWrite(PIN_ANTENNA, dutyCycle(level));
+        logicValue = level;
+        transitionOccurred = true;
     }
 }
 
@@ -179,6 +220,11 @@ void setup() {
   // Start the 60khz carrier signal using 8-bit (0-255) resolution
   ledcAttach(PIN_ANTENNA, KHZ_60, 8);
 
+  // Initialize DST flags before starting the 1ms signal timer
+  struct timeval now;
+  gettimeofday(&now, NULL);
+  updateDstFlags(now.tv_sec);
+
   // green means go
   if( pixel ) {
     pixel->setPixelColor(0, COLOR_READY );
@@ -187,6 +233,18 @@ void setup() {
     pixel->clear();  
     pixel->show();
   }
+
+  // Start the high-priority signal timer (1ms interval).
+  // This ensures PWM transitions happen on time regardless of WiFi/ESPUI activity.
+  const esp_timer_create_args_t timerArgs = {
+      .callback = onSignalTimer,
+      .arg = NULL,
+      .dispatch_method = ESP_TIMER_TASK,
+      .name = "signal_timer"
+  };
+  esp_timer_create(&timerArgs, &signalTimer);
+  esp_timer_start_periodic(signalTimer, 1000);  // 1ms = 1000us
+  Serial.println("Signal timer started (1ms interval)");
 }
 
 void loop() {
@@ -195,45 +253,21 @@ void loop() {
   struct timeval now; // current time in seconds / millis
   struct tm buf_now_utc; // current time in UTC
   struct tm buf_now_local; // current time in localtime
-  struct tm buf_today_start, buf_tomorrow_start; // start of today and tomrrow in localtime
-  static int prev_second_display = -1; // for tracking UI updates
 
   gettimeofday(&now,NULL);
   localtime_r(&now.tv_sec, &buf_now_local);
   gmtime_r(&now.tv_sec, &buf_now_utc); 
 
-  // compute start of today for dst
-  struct timeval today_start = now;
-  today_start.tv_usec = 0;
-  today_start.tv_sec = (today_start.tv_sec / 86400) * 86400; // This is not exact but close enough
-  localtime_r(&today_start.tv_sec, &buf_today_start);
-
-  // compute start of tomorrow for dst
-  struct timeval tomorrow_start = now;
-  tomorrow_start.tv_usec = 0;
-  tomorrow_start.tv_sec = ((tomorrow_start.tv_sec / 86400) + 1) * 86400; // again, close enough
-  localtime_r(&tomorrow_start.tv_sec, &buf_tomorrow_start);
-
-  const bool prevLogicValue = logicValue;
-
-  logicValue = wwvbLogicSignal(
-    buf_now_utc.tm_hour,
-    buf_now_utc.tm_min,
-    buf_now_utc.tm_sec, 
-    now.tv_usec/1000,
-    buf_now_utc.tm_yday+1,
-    buf_now_utc.tm_year+1900,
-    buf_today_start.tm_isdst,
-    buf_tomorrow_start.tm_isdst
-    );
+  updateDstFlags(now.tv_sec);
 
   // --- UI UPDATE LOGIC ---
-  if( logicValue != prevLogicValue ) {
-    ledcWrite(PIN_ANTENNA, dutyCycle(logicValue));  // Update the duty cycle of the PWM
+  if( transitionOccurred ) {
+    transitionOccurred = false;
+    const bool currentLogicValue = logicValue;
 
     // light up the pixel if desired
     if( pixel ) {
-      if( logicValue == 1 ) {
+      if( currentLogicValue == 1 ) {
         pixel->setPixelColor(0, COLOR_TRANSMIT ); // don't call show yet, the color may change
       } else {
         pixel->clear();
@@ -247,13 +281,13 @@ void loop() {
     char timeStringBuff3[20];
     strftime(timeStringBuff, sizeof(timeStringBuff), "%A, %B %d %Y %H:%M:%S", &buf_now_local); // time
     strftime(timeStringBuff3, sizeof(timeStringBuff3), "%z %Z", &buf_now_local); // timezone
-    sprintf(timeStringBuff2,"%s.%03d%s", timeStringBuff, now.tv_usec/1000, timeStringBuff3 ); // time+millis+tz
+    snprintf(timeStringBuff2, sizeof(timeStringBuff2), "%s.%03d%s", timeStringBuff, now.tv_usec/1000, timeStringBuff3 ); // time+millis+tz
 
     char lastSyncStringBuff[100]; // Buffer to hold the formatted time string
     struct tm buf_lastSync;
     localtime_r(&lastSync.tv_sec, &buf_lastSync);
     strftime(lastSyncStringBuff, sizeof(lastSyncStringBuff), "%b %d %H:%M", &buf_lastSync);
-    Serial.printf("%s [last sync %s]: %s\n",timeStringBuff2, lastSyncStringBuff, logicValue ? "1" : "0");
+    Serial.printf("%s [last sync %s]: %s\n",timeStringBuff2, lastSyncStringBuff, currentLogicValue ? "1" : "0");
 
     static int prevSecond = -1;
     if( prevSecond != buf_now_utc.tm_sec ) {
@@ -287,6 +321,7 @@ void loop() {
                 break;
         }
         }
+        buf[60] = '\0';
         ESPUI.print(ui_broadcast, buf);
 
 
@@ -305,10 +340,12 @@ void loop() {
     }
 
     // Check for stale sync (24 hours)
-    if( now.tv_sec - lastSync.tv_sec > 60 * 60 * 24 ) {
+    // Only restart if it's past 12pm local time to avoid rebooting while a device is syncing
+    if( (now.tv_sec - lastSync.tv_sec > 60 * 60 * 24) && buf_now_local.tm_hour >= 12 ) {
       Serial.println("Last sync more than 24 hours ago, rebooting.");
       if( pixel ) {
         pixel->setPixelColor(0, COLOR_ERROR );
+        pixel->show();
         delay(3000);
       }
       ESP.restart();

@@ -161,20 +161,18 @@ The Arduino setup() method does a few things.
 
 Initialize the components we’ll be using, particularly the serial port, LEDs, WiFi, mDNS + Web UI (`http://watchtower.local`), output pins, timezone, and network time sync (NTP). The network time sync will happen automatically in the background every hour. This is important because the realtime clock (RTC) on most microcontrollers are notoriously subject to drift and are rarely accurate for more than a few hours.
 
-Start the 60 kHz carrier wave at a 50% duty cycle.
+Start the 60 kHz carrier wave and register a 1ms high-priority hardware timer (`esp_timer`) to drive the WWVB pulse-width transitions without jitter from WiFi or Web UI activity.
 
-**Loop()**
+**Signal Timer & Loop()**
 
-Arduino then moves to the loop(), which continuously performs the following operations:
+A 1ms `esp_timer` callback (`onSignalTimer`) continuously reads the UTC time from the RTC, computes whether the 60 kHz carrier wave should be set to 50% (logical high) or 0% (logical low) for that specific moment in time, and updates `PIN_ANTENNA` immediately on each edge. Time is always UTC, except for the DST bits which are relative to your local timezone.
 
-- Get the current time in UTC
-- Convert it to your local timezone to determine DST
-- Compute whether the 60 kHz carrier wave should be set to 50% (logical high) or 0% (logical low) for that specific moment in time. Time is always UTC, except for the DST bit which is relative to your local timezone.
-- Set the PIN_ANTENNA to high or low based on that value.
-- Update the Web UI (`http://watchtower.local`) once per second with the latest time, uptime, and broadcast waveform.
-- [Optional] you can flash the led for high/low PWM. This is nice for making sure things are working, but it’s grounds for divorce in the bedroom.
+Meanwhile, `loop()` continuously performs the following background operations:
 
-Do some other nice-to-haves like logging, setting LEDs and/or rebooting when there are issues.
+- Update the local timezone DST flags (`today_start_isdst` and `tomorrow_start_isdst`).
+- When a signal transition occurs, log the timestamp and logic state to Serial and update the Web UI (`http://watchtower.local`) once per second with the latest time, uptime, and broadcast waveform.
+- [Optional] Flash the onboard NeoPixel LED for high/low PWM. This is nice for making sure things are working, but it’s grounds for divorce in the bedroom.
+- Reboot if NTP has not synced in more than 24 hours (deferred until after 12:00 PM local time so it never interrupts overnight watch syncs).
 
 ### Verify the microcontroller alone
 

@@ -12,6 +12,7 @@
 #include "WiFiUdp.h"
 #include "ArduinoMDNS.h"
 #include "esp_sntp.h"
+#include "esp_timer.h"
 #include "WiFi.h"
 #include "Esp.h"
 #include "SPI.h"
@@ -60,8 +61,13 @@ SerialMock MySerial;
 #define Serial MySerial
 
 // ESP32 specific mocks
+uint32_t last_ledc_duty = 999;
+int ledc_write_count = 0;
 void ledcAttach(uint8_t pin, double freq, uint8_t resolution) {}
-void ledcWrite(uint8_t pin, uint32_t duty) {}
+void ledcWrite(uint8_t pin, uint32_t duty) {
+    last_ledc_duty = duty;
+    ledc_write_count++;
+}
 void configTzTime(const char* tz, const char* server1, const char* server2 = nullptr, const char* server3 = nullptr) {}
 bool getLocalTime(struct tm* info, uint32_t ms = 5000) {
     time_t now;
@@ -85,6 +91,15 @@ void setUp(void) {
     MySerial.output = "";
     WiFiManager::calledAutoConnect = false;
     memset(WiFiManager::lastSSID, 0, sizeof(WiFiManager::lastSSID));
+    ESP.restartCount = 0;
+    ESPUI.nextId = 1;
+    ESPUI.printedValues.clear();
+    mock_timer_callback = nullptr;
+    mock_timer_period_us = 0;
+    last_ledc_duty = 999;
+    ledc_write_count = 0;
+    logicValue = 0;
+    lastSync = {0, 0};
     // Set TZ to UTC for predictable testing
     setenv("TZ", "UTC", 1);
     tzset();
@@ -134,6 +149,9 @@ void test_serial_date_output(void) {
     
     // Act
     setup(); // Initialize
+    if (mock_timer_callback) {
+        mock_timer_callback(NULL);
+    }
     loop();  // Run loop once
 
     // Assert
@@ -225,6 +243,81 @@ void test_wwvb_frame_encoding(void) {
     }
 }
 
+void test_signal_timer_configured_and_drives_pwm(void) {
+    // 2025-12-25 12:00:00.900 UTC -> second 0 (MARK) at 900ms is HIGH (duty 128)
+    mock_tv.tv_sec = 1766664000;
+    mock_tv.tv_usec = 900000;
+
+    setup();
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(mock_timer_callback, "setup() must register an esp_timer callback");
+    TEST_ASSERT_EQUAL_UINT64(1000, mock_timer_period_us);
+
+    // Firing the timer callback directly should update PWM without calling loop()
+    mock_timer_callback(NULL);
+    TEST_ASSERT_EQUAL_UINT32(128, last_ledc_duty);
+    TEST_ASSERT_EQUAL_INT(1, ledc_write_count);
+
+    // Advance to next second at 100ms (LOW -> duty 0)
+    mock_tv.tv_sec = 1766664001;
+    mock_tv.tv_usec = 100000;
+    mock_timer_callback(NULL);
+    TEST_ASSERT_EQUAL_UINT32(0, last_ledc_duty);
+    TEST_ASSERT_EQUAL_INT(2, ledc_write_count);
+}
+
+static void dirty_stack(void) {
+    volatile char garbage[1024];
+    for (size_t i = 0; i < sizeof(garbage); ++i) {
+        garbage[i] = 'X';
+    }
+}
+
+void test_broadcast_ui_string_is_null_terminated_at_60(void) {
+    mock_tv.tv_sec = 1766664002; // distinct second so prevSecond triggers UI update
+    mock_tv.tv_usec = 900000;
+
+    setup();
+    if (mock_timer_callback) {
+        mock_timer_callback(NULL);
+    }
+    dirty_stack();
+    loop();
+
+    TEST_ASSERT_TRUE(ESPUI.printedValues.count(ui_broadcast) > 0);
+    TEST_ASSERT_EQUAL_UINT(60, ESPUI.printedValues[ui_broadcast].size());
+}
+
+void test_stale_sync_does_not_reboot_before_noon(void) {
+    // 2025-12-25 02:00:00 UTC (2 AM, during overnight watch sync window)
+    mock_tv.tv_sec = 1766628000;
+    mock_tv.tv_usec = 900000;
+    lastSync.tv_sec = mock_tv.tv_sec - (25 * 3600); // 25 hours ago (stale)
+
+    setup();
+    if (mock_timer_callback) {
+        mock_timer_callback(NULL);
+    }
+    loop();
+
+    TEST_ASSERT_EQUAL_INT(0, ESP.restartCount);
+}
+
+void test_stale_sync_reboots_at_or_after_noon(void) {
+    // 2025-12-25 12:00:00 UTC (12 PM noon)
+    mock_tv.tv_sec = 1766664000;
+    mock_tv.tv_usec = 900000;
+    lastSync.tv_sec = mock_tv.tv_sec - (25 * 3600); // 25 hours ago (stale)
+
+    setup();
+    if (mock_timer_callback) {
+        mock_timer_callback(NULL);
+    }
+    loop();
+
+    TEST_ASSERT_EQUAL_INT(1, ESP.restartCount);
+}
+
 int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_setup_completes);
@@ -232,6 +325,10 @@ int main(int argc, char **argv) {
     RUN_TEST(test_serial_date_output);
     RUN_TEST(test_wwvb_logic_signal);
     RUN_TEST(test_wwvb_frame_encoding);
+    RUN_TEST(test_signal_timer_configured_and_drives_pwm);
+    RUN_TEST(test_broadcast_ui_string_is_null_terminated_at_60);
+    RUN_TEST(test_stale_sync_does_not_reboot_before_noon);
+    RUN_TEST(test_stale_sync_reboots_at_or_after_noon);
     UNITY_END();
     return 0;
 }
