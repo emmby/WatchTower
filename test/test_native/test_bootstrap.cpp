@@ -99,6 +99,9 @@ void setUp(void) {
     last_ledc_duty = 999;
     ledc_write_count = 0;
     logicValue = 0;
+    transitionOccurred = false;
+    today_start_isdst = 0;
+    tomorrow_start_isdst = 0;
     lastSync = {0, 0};
     // Set TZ to UTC for predictable testing
     setenv("TZ", "UTC", 1);
@@ -289,8 +292,11 @@ void test_broadcast_ui_string_is_null_terminated_at_60(void) {
 }
 
 void test_stale_sync_does_not_reboot_before_noon(void) {
-    // 2025-12-25 02:00:00 UTC (2 AM, during overnight watch sync window)
-    mock_tv.tv_sec = 1766628000;
+    // Use PST (UTC-8) at 2025-12-25 18:00:00 UTC = 10:00:00 PST
+    // Verifies that local hour (10 < 12), not UTC hour (18 >= 12), gates the reboot
+    setenv("TZ", "PST8PDT,M3.2.0,M11.1.0", 1);
+    tzset();
+    mock_tv.tv_sec = 1766685600;
     mock_tv.tv_usec = 900000;
     lastSync.tv_sec = mock_tv.tv_sec - (25 * 3600); // 25 hours ago (stale)
 

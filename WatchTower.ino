@@ -250,20 +250,20 @@ void setup() {
 void loop() {
   mdns.run();
 
-  struct timeval now; // current time in seconds / millis
-  struct tm buf_now_utc; // current time in UTC
-  struct tm buf_now_local; // current time in localtime
-
-  gettimeofday(&now,NULL);
-  localtime_r(&now.tv_sec, &buf_now_local);
-  gmtime_r(&now.tv_sec, &buf_now_utc); 
-
-  updateDstFlags(now.tv_sec);
-
   // --- UI UPDATE LOGIC ---
   if( transitionOccurred ) {
     transitionOccurred = false;
     const bool currentLogicValue = logicValue;
+
+    struct timeval now; // current time in seconds / millis
+    struct tm buf_now_utc; // current time in UTC
+    struct tm buf_now_local; // current time in localtime
+
+    gettimeofday(&now,NULL);
+    localtime_r(&now.tv_sec, &buf_now_local);
+    gmtime_r(&now.tv_sec, &buf_now_utc); 
+
+    updateDstFlags(now.tv_sec);
 
     // light up the pixel if desired
     if( pixel ) {
@@ -558,7 +558,9 @@ bool wwvbLogicSignal(
     }
 
     if(second == 0) {
-        clearBroadcastValues();
+        for(int i=1; i<sizeof(broadcast)/sizeof(broadcast[0]); ++i) {
+            broadcast[i] = (WWVB_T)-1;
+        }
     }
     broadcast[second] = bit;
 
