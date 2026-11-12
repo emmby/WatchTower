@@ -73,7 +73,7 @@ volatile bool logicValue = 0; // current PWM output level (high/low)
 volatile bool transitionOccurred = false; // set by timer callback on a PWM edge
 volatile int today_start_isdst = 0;
 volatile int tomorrow_start_isdst = 0;
-esp_timer_handle_t signalTimer = nullptr; // 1ms high-priority timer for PWM output
+esp_timer_handle_t signalTimer = nullptr; // 10ms high-priority timer for PWM output
 struct timeval lastSync;
 WWVB_T broadcast[60];
 
@@ -124,7 +124,7 @@ void updateDstFlags(time_t now_sec) {
     tomorrow_start_isdst = buf_tomorrow_start.tm_isdst;
 }
 
-// High-priority timer callback (runs every 1ms).
+// High-priority timer callback (runs every 10ms).
 // Reads the RTC, computes the current WWVB bit and PWM level, and updates the antenna pin.
 // This runs at higher priority than WiFi/ESPUI/mDNS, eliminating network-induced jitter.
 void onSignalTimer(void* arg) {
@@ -220,7 +220,7 @@ void setup() {
   // Start the 60khz carrier signal using 8-bit (0-255) resolution
   ledcAttach(PIN_ANTENNA, KHZ_60, 8);
 
-  // Initialize DST flags before starting the 1ms signal timer
+  // Initialize DST flags before starting the 10ms signal timer
   struct timeval now;
   gettimeofday(&now, NULL);
   updateDstFlags(now.tv_sec);
@@ -234,7 +234,7 @@ void setup() {
     pixel->show();
   }
 
-  // Start the high-priority signal timer (1ms interval).
+  // Start the high-priority signal timer (10ms interval).
   // This ensures PWM transitions happen on time regardless of WiFi/ESPUI activity.
   const esp_timer_create_args_t timerArgs = {
       .callback = onSignalTimer,
@@ -243,8 +243,8 @@ void setup() {
       .name = "signal_timer"
   };
   esp_timer_create(&timerArgs, &signalTimer);
-  esp_timer_start_periodic(signalTimer, 1000);  // 1ms = 1000us
-  Serial.println("Signal timer started (1ms interval)");
+  esp_timer_start_periodic(signalTimer, 10000);  // 10ms = 10000us
+  Serial.println("Signal timer started (10ms interval)");
 }
 
 void loop() {

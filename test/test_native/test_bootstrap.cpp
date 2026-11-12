@@ -254,7 +254,7 @@ void test_signal_timer_configured_and_drives_pwm(void) {
     setup();
 
     TEST_ASSERT_NOT_NULL_MESSAGE(mock_timer_callback, "setup() must register an esp_timer callback");
-    TEST_ASSERT_EQUAL_UINT64(1000, mock_timer_period_us);
+    TEST_ASSERT_EQUAL_UINT64(10000, mock_timer_period_us);
 
     // Firing the timer callback directly should update PWM without calling loop()
     mock_timer_callback(NULL);

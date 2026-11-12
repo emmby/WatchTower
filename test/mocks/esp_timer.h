@@ -2,7 +2,7 @@
 #include <stdint.h>
 
 // Mock esp_timer for native testing.
-// In production, the real esp_timer fires the callback every 1ms.
+// In production, the real esp_timer fires the callback every 10ms.
 // In tests, the test calls onSignalTimer() directly to simulate the timer.
 
 typedef void* esp_timer_handle_t;

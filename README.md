@@ -161,11 +161,11 @@ The Arduino setup() method does a few things.
 
 Initialize the components we’ll be using, particularly the serial port, LEDs, WiFi, mDNS + Web UI (`http://watchtower.local`), output pins, timezone, and network time sync (NTP). The network time sync will happen automatically in the background every hour. This is important because the realtime clock (RTC) on most microcontrollers are notoriously subject to drift and are rarely accurate for more than a few hours.
 
-Start the 60 kHz carrier wave and register a 1ms high-priority hardware timer (`esp_timer`) to drive the WWVB pulse-width transitions without jitter from WiFi or Web UI activity.
+Start the 60 kHz carrier wave and register a 10ms high-priority hardware timer (`esp_timer`) to drive the WWVB pulse-width transitions without jitter from WiFi or Web UI activity.
 
 **Signal Timer & Loop()**
 
-A 1ms `esp_timer` callback (`onSignalTimer`) continuously reads the UTC time from the RTC, computes whether the 60 kHz carrier wave should be set to 50% (logical high) or 0% (logical low) for that specific moment in time, and updates `PIN_ANTENNA` immediately on each edge. Time is always UTC, except for the DST bits which are relative to your local timezone.
+A 10ms `esp_timer` callback (`onSignalTimer`) continuously reads the UTC time from the RTC, computes whether the 60 kHz carrier wave should be set to 50% (logical high) or 0% (logical low) for that specific moment in time, and updates `PIN_ANTENNA` immediately on each edge. Time is always UTC, except for the DST bits which are relative to your local timezone.
 
 Meanwhile, `loop()` continuously performs the following background operations:
 
