@@ -70,9 +70,6 @@ MSFSignal msf;
 JJYSignal jjy;
 RadioTimeSignal* signalGenerator = &wwvb; // active protocol encoder
 
-const char* const SIGNAL_NAMES[] = {"WWVB", "DCF77", "MSF", "JJY"};
-RadioTimeSignal* const SIGNAL_GENERATORS[] = {&wwvb, &dcf77, &msf, &jjy};
-
 StatusLED statusLED;
 WebUI webUI;
 WiFiManager wifiManager;
@@ -112,30 +109,9 @@ void clearBroadcastValues(TimeCodeSymbol* buf) {
     }
 }
 
-// Look up a signal generator by name, defaulting to WWVB.
-RadioTimeSignal* findSignal(const String& name) {
-  int count = sizeof(SIGNAL_NAMES) / sizeof(SIGNAL_NAMES[0]);
-  for (int i = 0; i < count; ++i) {
-    if (name == SIGNAL_NAMES[i]) {
-      return SIGNAL_GENERATORS[i];
-    }
-  }
-  return &wwvb;
-}
-
 // ========================
 // Callbacks
 // ========================
-
-// Called by WebUI when the user selects a different signal protocol.
-void onSignalSelected(const String& name) {
-  signalGenerator = findSignal(name);
-  preferences.putString("signal", signalGenerator->getName());
-  Serial.println("Signal changed to: " + signalGenerator->getName());
-
-  ledcDetach(PIN_ANTENNA);
-  ledcAttach(PIN_ANTENNA, signalGenerator->getFrequency(), 8);
-}
 
 // A callback that tracks when we last sync'ed the
 // time with the ntp server
@@ -214,17 +190,20 @@ void setup() {
   preferences.begin("watchtower", false);
   networkSyncEnabled = preferences.getBool("net_sync", true);
   String savedSignal = preferences.getString("signal", "WWVB");
-  signalGenerator = findSignal(savedSignal);
+  if (savedSignal == "DCF77") signalGenerator = &dcf77;
+  else if (savedSignal == "MSF") signalGenerator = &msf;
+  else if (savedSignal == "JJY") signalGenerator = &jjy;
+  else signalGenerator = &wwvb;
 
   clearBroadcastValues(broadcastA);
   clearBroadcastValues(broadcastB);
 
   // --- WEB UI SETUP ---
   if( ENABLE_WEB_UI ) {
-    int signalCount = sizeof(SIGNAL_NAMES) / sizeof(SIGNAL_NAMES[0]);
-    webUI.begin(TIMEZONE, SIGNAL_NAMES, signalCount,
-                signalGenerator->getName().c_str(), onSignalSelected,
-                preferences, ntpServer, networkSyncEnabled, mdns);
+    webUI.begin(TIMEZONE, signalGenerator,
+                wwvb, dcf77, msf, jjy,
+                preferences, PIN_ANTENNA, ntpServer,
+                networkSyncEnabled, mdns);
   }
   
   // --- TIME SYNC ---
