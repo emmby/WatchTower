@@ -166,10 +166,9 @@ void run_comparison(const char* timezone, bool input_is_utc, bool add_minute, co
 
 void test_wwvb_compare(void) {
     // WWVB: UTC time, US DST rules
-    // Skip DST bits (57, 58) as txtempus seems to not implement DST logic (or uses UTC)
-    std::vector<int> skip;
-    skip.push_back(57);
-    skip.push_back(58);
+    // Skip UT1 sign bits (36-38, txtempus leaves them 0 instead of 101)
+    // and DST bits (57, 58) as txtempus DST bit ordering/day-start differs
+    std::vector<int> skip = {36, 37, 38, 57, 58};
     run_comparison<WWVBSignal, WWVBTimeSignalSource>("PST8PDT,M3.2.0,M11.1.0", true, false, skip);
 }
 

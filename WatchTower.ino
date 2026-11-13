@@ -88,8 +88,8 @@ TimeCodeSymbol broadcastA[60];
 TimeCodeSymbol broadcastB[60];
 volatile const TimeCodeSymbol* activeBroadcast = broadcastA; // pointer to the currently active buffer
 volatile bool transitionOccurred = false; // set by ISR to notify loop() of a PWM edge
-volatile unsigned long lastTransitionUsec = 0; // microsecond timestamp of the last PWM edge
-volatile int lastTransitionSecond = 0; // second (0-59) of the last PWM edge
+time_t lastEncodedMinute = -1; // epoch minute (tv_sec / 60) last encoded into activeBroadcast
+RadioTimeSignal* lastEncodedSignal = nullptr; // protocol last encoded into activeBroadcast
 
 // ========================
 // Helpers
@@ -107,6 +107,36 @@ void clearBroadcastValues(TimeCodeSymbol* buf) {
     for(int i=0; i<60; ++i) {
         buf[i] = (TimeCodeSymbol)-1; // -1 isn't legal but that's okay, we just need an invalid value
     }
+}
+
+// Encode the 60-second broadcast frame for the minute containing now_sec
+// into the inactive buffer, then swap activeBroadcast atomically.
+void encodeBroadcastMinute(time_t now_sec) {
+    struct tm buf_now_utc;
+    struct tm buf_now_local;
+    struct tm buf_today_start, buf_tomorrow_start;
+
+    gmtime_r(&now_sec, &buf_now_utc);
+    localtime_r(&now_sec, &buf_now_local);
+
+    time_t today_sec = (now_sec / 86400) * 86400; // This is not exact but close enough
+    time_t tomorrow_sec = ((now_sec / 86400) + 1) * 86400; // again, close enough
+    localtime_r(&today_sec, &buf_today_start);
+    localtime_r(&tomorrow_sec, &buf_tomorrow_start);
+
+    TimeCodeSymbol* inactive = (activeBroadcast == broadcastA) ? broadcastB : broadcastA;
+    clearBroadcastValues(inactive);
+    signalGenerator->encodeMinute(
+        signalGenerator->usesUtc() ? buf_now_utc : buf_now_local,
+        buf_today_start.tm_isdst,
+        buf_tomorrow_start.tm_isdst
+    );
+    for (int s = 0; s < 60; s++) {
+        inactive[s] = signalGenerator->getSymbolForSecond(s);
+    }
+    activeBroadcast = inactive; // atomic pointer swap
+    lastEncodedMinute = now_sec / 60;
+    lastEncodedSignal = signalGenerator;
 }
 
 // ========================
@@ -157,8 +187,6 @@ void onSignalTimer(void* arg) {
     if (level != logicValue) {
         ledcWrite(PIN_ANTENNA, dutyCycle(level));
         logicValue = level;
-        lastTransitionUsec = now.tv_usec;
-        lastTransitionSecond = sec;
         transitionOccurred = true;
     }
 }
@@ -239,6 +267,11 @@ void setup() {
   // Start the carrier signal using 8-bit (0-255) resolution
   ledcAttach(PIN_ANTENNA, signalGenerator->getFrequency(), 8);
 
+  // Encode the initial minute frame before starting the 10ms signal timer
+  struct timeval now;
+  gettimeofday(&now, NULL);
+  encodeBroadcastMinute(now.tv_sec);
+
   statusLED.setReady();
 
   // Start the high-priority signal timer (10ms interval).
@@ -257,51 +290,24 @@ void setup() {
 void loop() {
   mdns.run();
 
-  struct timeval now; // current time in seconds / millis
-  struct tm buf_now_utc; // current time in UTC
-  struct tm buf_now_local; // current time in localtime
-  struct tm buf_today_start, buf_tomorrow_start; // start of today and tomrrow in localtime
+  struct timeval now; // current time in seconds / micros
+  gettimeofday(&now, NULL);
 
-  gettimeofday(&now,NULL);
-  localtime_r(&now.tv_sec, &buf_now_local);
-  gmtime_r(&now.tv_sec, &buf_now_utc); 
-
-  // compute start of today for dst
-  struct timeval today_start = now;
-  today_start.tv_usec = 0;
-  today_start.tv_sec = (today_start.tv_sec / 86400) * 86400; // This is not exact but close enough
-  localtime_r(&today_start.tv_sec, &buf_today_start);
-
-  // compute start of tomorrow for dst
-  struct timeval tomorrow_start = now;
-  tomorrow_start.tv_usec = 0;
-  tomorrow_start.tv_sec = ((tomorrow_start.tv_sec / 86400) + 1) * 86400; // again, close enough
-  localtime_r(&tomorrow_start.tv_sec, &buf_tomorrow_start);
-
-    static int prevMinute = -1;
-    if (buf_now_utc.tm_min != prevMinute) {
-        prevMinute = buf_now_utc.tm_min;
-        // Write to the INACTIVE buffer, then swap
-        TimeCodeSymbol* inactive = (activeBroadcast == broadcastA) ? broadcastB : broadcastA;
-        clearBroadcastValues(inactive);
-        signalGenerator->encodeMinute(
-            buf_now_utc,
-            buf_today_start.tm_isdst,
-            buf_tomorrow_start.tm_isdst
-        );
-        for (int s = 0; s < 60; s++) {
-            inactive[s] = signalGenerator->getSymbolForSecond(s);
-        }
-        activeBroadcast = inactive;  // atomic pointer swap
-    }
-
+  if (now.tv_sec / 60 != lastEncodedMinute || signalGenerator != lastEncodedSignal) {
+    encodeBroadcastMinute(now.tv_sec);
+  }
 
   // --- HANDLE TRANSITIONS DETECTED BY TIMER CALLBACK ---
   if( transitionOccurred ) {
     transitionOccurred = false;
-    unsigned long usec = lastTransitionUsec;
+    const bool currentLogicValue = logicValue;
 
-    statusLED.setTransmitting(logicValue);
+    struct tm buf_now_utc; // current time in UTC
+    struct tm buf_now_local; // current time in localtime
+    localtime_r(&now.tv_sec, &buf_now_local);
+    gmtime_r(&now.tv_sec, &buf_now_utc);
+
+    statusLED.setTransmitting(currentLogicValue);
 
     // do any logging after we set the bit to not slow anything down,
     // serial port I/O is slow!
@@ -320,7 +326,7 @@ void loop() {
         localtime_r(&lastSync.tv_sec, &buf_lastSync);
         strftime(lastSyncStringBuff, sizeof(lastSyncStringBuff), "%b %d %H:%M", &buf_lastSync);
     }
-    Serial.printf("%s [last sync %s]: %s\n",timeStringBuff2, lastSyncStringBuff, logicValue ? "1" : "0");
+    Serial.printf("%s [last sync %s]: %s\n",timeStringBuff2, lastSyncStringBuff, currentLogicValue ? "1" : "0");
 
 
     static int prevSecond = -1;
@@ -339,6 +345,6 @@ void loop() {
     }
 
     statusLED.show();
-  }  
+  }
 }
 

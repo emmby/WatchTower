@@ -13,6 +13,10 @@ public:
         return "WWVB";
     }
 
+    bool usesUtc() override {
+        return true;
+    }
+
     void encodeMinute(const struct tm& timeinfo, int today_start_isdst, int tomorrow_start_isdst) override {
         frameBits_ = 0;
         
@@ -24,6 +28,10 @@ public:
 
         // Day of Year: 22, 23, 25, 26, 27, 28, 30, 31, 32, 33 (Bits 59-33)
         frameBits_ |= to_padded5_bcd(timeinfo.tm_yday + 1) << (59 - 33);
+
+        // UT1 sign (+): 36 = 1, 37 = 0, 38 = 1
+        frameBits_ |= 1ULL << (59 - 36);
+        frameBits_ |= 1ULL << (59 - 38);
 
         // Year: 45, 46, 47, 48, 50, 51, 52, 53 (Bits 59-53)
         frameBits_ |= to_padded5_bcd((timeinfo.tm_year + 1900) % 100) << (59 - 53);
@@ -37,11 +45,13 @@ public:
         bool dst1 = false;
         bool dst2 = false;
 
-        if (today_start_isdst && tomorrow_start_isdst) {
+        const bool today_dst = today_start_isdst > 0;
+        const bool tomorrow_dst = tomorrow_start_isdst > 0;
+        if (today_dst && tomorrow_dst) {
             dst1 = true; dst2 = true;
-        } else if (!today_start_isdst && !tomorrow_start_isdst) {
+        } else if (!today_dst && !tomorrow_dst) {
             dst1 = false; dst2 = false;
-        } else if (!today_start_isdst && tomorrow_start_isdst) {
+        } else if (!today_dst && tomorrow_dst) {
             dst1 = true; dst2 = false;
         } else {
             dst1 = false; dst2 = true;

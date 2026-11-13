@@ -28,6 +28,9 @@ public:
     // Returns the display name of the signal
     virtual String getName() = 0;
 
+    // Returns true if encodeMinute() expects UTC time (WWVB), or false for local time (DCF77, MSF, JJY)
+    virtual bool usesUtc() { return false; }
+
     // Encodes the signal for the upcoming minute.
     // This should be called once at the beginning of each minute (second 0)
     // before calling getSymbolForSecond

@@ -115,6 +115,9 @@ void setUp(void) {
     logicValue = 0;
     transitionOccurred = false;
     lastSync = {0, 0};
+    signalGenerator = &wwvb;
+    lastEncodedMinute = -1;
+    lastEncodedSignal = nullptr;
     // Set TZ to UTC for predictable testing
     setenv("TZ", "UTC", 1);
     tzset();
@@ -253,6 +256,11 @@ void test_wwvb_frame_encoding(void) {
     
     // Check a ZERO bit (e.g. Sec 22 - Hundreds 200)
     TEST_ASSERT_EQUAL(TimeCodeSymbol::ZERO, wwvb.getSymbolForSecond(22));
+
+    // UT1 sign (+): 36=1, 37=0, 38=1
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ONE, wwvb.getSymbolForSecond(36));
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ZERO, wwvb.getSymbolForSecond(37));
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ONE, wwvb.getSymbolForSecond(38));
 }
 
 void test_dcf77_signal(void) {
@@ -451,6 +459,38 @@ void test_custom_js_wwvb_groups(void) {
     TEST_ASSERT_NOT_NULL(strstr(customJS, "{ label: 'DST', start: 57, end: 58, weights: {57:'D1', 58:'D2'}, decode: { '00': 'Std', '10': 'Begins', '11': 'DST', '01': 'Ends' } }"));
 }
 
+void test_protocol_timezone_and_reencode(void) {
+    // 2025-12-25 18:00:00 UTC = 10:00:00 PST (UTC-8)
+    setenv("TZ", "PST8PDT,M3.2.0,M11.1.0", 1);
+    tzset();
+    mock_tv.tv_sec = 1766685600;
+    mock_tv.tv_usec = 100000;
+
+    setup();
+
+    // WWVB uses UTC hour 18 (10 + 8 -> sec 12=0, sec 13=1, sec 15=1, sec 16=0, sec 17=0, sec 18=0)
+    TEST_ASSERT_EQUAL_STRING("WWVB", signalGenerator->getName().c_str());
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ZERO, activeBroadcast[12]);
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ONE, activeBroadcast[13]);
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ONE, activeBroadcast[15]);
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ONE, activeBroadcast[36]);
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ZERO, activeBroadcast[37]);
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ONE, activeBroadcast[38]);
+
+    // Switch to JJY mid-minute via WebUI and run loop() once:
+    // activeBroadcast must immediately re-encode using local PST hour 10 (sec 13=1, sec 15=0)
+    Control sender;
+    sender.id = webUI._ui_signal_select;
+    sender.value = "JJY";
+    WebUI::_onSignalChange(&sender, S_ACTIVE);
+    loop();
+
+    TEST_ASSERT_EQUAL_STRING("JJY", signalGenerator->getName().c_str());
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ZERO, activeBroadcast[12]);
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ONE, activeBroadcast[13]);
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ZERO, activeBroadcast[15]);
+}
+
 int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_setup_completes);
@@ -467,6 +507,7 @@ int main(int argc, char **argv) {
     RUN_TEST(test_stale_sync_does_not_reboot_before_noon);
     RUN_TEST(test_stale_sync_reboots_at_or_after_noon);
     RUN_TEST(test_custom_js_wwvb_groups);
+    RUN_TEST(test_protocol_timezone_and_reencode);
     UNITY_END();
     return 0;
 }
