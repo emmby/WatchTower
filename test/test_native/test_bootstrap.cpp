@@ -25,7 +25,8 @@ SPIClass SPI;
 
 // Core functions
 void delay(unsigned long ms) {}
-unsigned long millis() { return 0; }
+unsigned long mock_millis = 0;
+unsigned long millis() { return mock_millis; }
 unsigned long micros() { return 0; }
 void pinMode(uint8_t pin, uint8_t mode) {}
 void digitalWrite(uint8_t pin, uint8_t val) {}
@@ -68,13 +69,18 @@ SerialMock MySerial;
 #define Serial MySerial
 
 // ESP32 specific mocks
-// Global to track last ledc frequency
+// Global to track last ledc frequency and duty
 int last_ledc_freq = 0;
+uint32_t last_ledc_duty = 999;
+int ledc_write_count = 0;
 void ledcAttach(uint8_t pin, double freq, uint8_t resolution) {
     last_ledc_freq = (int)freq;
 }
 void ledcDetach(uint8_t pin) {}
-void ledcWrite(uint8_t pin, uint32_t duty) {}
+void ledcWrite(uint8_t pin, uint32_t duty) {
+    last_ledc_duty = duty;
+    ledc_write_count++;
+}
 void configTzTime(const char* tz, const char* server1, const char* server2 = nullptr, const char* server3 = nullptr) {}
 bool getLocalTime(struct tm* info, uint32_t ms = 5000) {
     time_t now;
@@ -99,6 +105,18 @@ void setUp(void) {
     MySerial.output = "";
     WiFiManager::calledAutoConnect = false;
     memset(WiFiManager::lastSSID, 0, sizeof(WiFiManager::lastSSID));
+    ESP.restartCount = 0;
+    ESPUI.nextId = 1;
+    ESPUI.printedValues.clear();
+    mock_timer_callback = nullptr;
+    mock_timer_period_us = 0;
+    last_ledc_freq = 0;
+    last_ledc_duty = 999;
+    ledc_write_count = 0;
+    mock_millis = 0;
+    logicValue = 0;
+    transitionOccurred = false;
+    lastSync = 0;
     // Set TZ to UTC for predictable testing
     setenv("TZ", "UTC", 1);
     tzset();
@@ -148,7 +166,9 @@ void test_serial_date_output(void) {
     
     // Act
     setup(); // Initialize
-    onSignalTimer(NULL);  // Simulate the hardware timer firing
+    if (mock_timer_callback) {
+        mock_timer_callback(NULL);
+    }
     loop();  // Run loop once
 
     // Assert
@@ -342,6 +362,89 @@ void test_signal_switching(void) {
     TEST_ASSERT_EQUAL(60000, last_ledc_freq);
 }
 
+void test_signal_timer_configured_and_drives_pwm(void) {
+    // 2025-12-25 12:00:00.900 UTC -> second 0 (MARK) at 900ms is HIGH (duty 128)
+    mock_tv.tv_sec = 1766664000;
+    mock_tv.tv_usec = 900000;
+
+    setup();
+    loop(); // populate activeBroadcast for the current minute
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(mock_timer_callback, "setup() must register an esp_timer callback");
+    TEST_ASSERT_EQUAL_UINT64(10000, mock_timer_period_us);
+
+    // Firing the timer callback directly should update PWM
+    mock_timer_callback(NULL);
+    TEST_ASSERT_EQUAL_UINT32(128, last_ledc_duty);
+    TEST_ASSERT_EQUAL_INT(1, ledc_write_count);
+
+    // Advance to next second at 100ms (LOW -> duty 0)
+    mock_tv.tv_sec = 1766664001;
+    mock_tv.tv_usec = 100000;
+    mock_timer_callback(NULL);
+    TEST_ASSERT_EQUAL_UINT32(0, last_ledc_duty);
+    TEST_ASSERT_EQUAL_INT(2, ledc_write_count);
+}
+
+static void dirty_stack(void) {
+    volatile char garbage[1024];
+    for (size_t i = 0; i < sizeof(garbage); ++i) {
+        garbage[i] = 'X';
+    }
+}
+
+void test_broadcast_ui_string_is_null_terminated_at_60(void) {
+    mock_tv.tv_sec = 1766664002; // distinct second so prevSecond triggers UI update
+    mock_tv.tv_usec = 900000;
+
+    setup();
+    loop(); // populate activeBroadcast
+    if (mock_timer_callback) {
+        mock_timer_callback(NULL);
+    }
+    dirty_stack();
+    loop();
+
+    TEST_ASSERT_TRUE(ESPUI.printedValues.count(1) > 0);
+    TEST_ASSERT_EQUAL_UINT(60, ESPUI.printedValues[1].size());
+}
+
+void test_stale_sync_does_not_reboot_before_noon(void) {
+    // Use PST (UTC-8) at 2025-12-25 18:00:00 UTC = 10:00:00 PST
+    // Verifies that local hour (10 < 12), not UTC hour (18 >= 12), gates the reboot
+    setenv("TZ", "PST8PDT,M3.2.0,M11.1.0", 1);
+    tzset();
+    mock_tv.tv_sec = 1766685600;
+    mock_tv.tv_usec = 900000;
+    mock_millis = 25UL * 3600UL * 1000UL; // 25 hours uptime
+    lastSync = 1; // 25 hours ago (stale)
+
+    setup();
+    loop(); // populate activeBroadcast
+    if (mock_timer_callback) {
+        mock_timer_callback(NULL);
+    }
+    loop();
+
+    TEST_ASSERT_EQUAL_INT(0, ESP.restartCount);
+}
+
+void test_stale_sync_reboots_at_or_after_noon(void) {
+    // 2025-12-25 12:00:00 UTC (12 PM noon)
+    mock_tv.tv_sec = 1766664000;
+    mock_tv.tv_usec = 900000;
+    mock_millis = 25UL * 3600UL * 1000UL; // 25 hours uptime
+    lastSync = 1; // 25 hours ago (stale)
+
+    setup();
+    loop(); // populate activeBroadcast
+    if (mock_timer_callback) {
+        mock_timer_callback(NULL);
+    }
+    loop();
+
+    TEST_ASSERT_EQUAL_INT(1, ESP.restartCount);
+}
 
 int main(int argc, char **argv) {
     UNITY_BEGIN();
@@ -354,6 +457,10 @@ int main(int argc, char **argv) {
     RUN_TEST(test_jjy_signal);
     RUN_TEST(test_msf_signal);
     RUN_TEST(test_signal_switching);
+    RUN_TEST(test_signal_timer_configured_and_drives_pwm);
+    RUN_TEST(test_broadcast_ui_string_is_null_terminated_at_60);
+    RUN_TEST(test_stale_sync_does_not_reboot_before_noon);
+    RUN_TEST(test_stale_sync_reboots_at_or_after_noon);
     UNITY_END();
     return 0;
 }

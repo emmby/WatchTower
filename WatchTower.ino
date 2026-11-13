@@ -76,11 +76,11 @@ WiFiManager wifiManager;
 WiFiUDP udp;
 MDNS mdns(udp);
 Preferences preferences;
-bool logicValue = 0; // current PWM output level (high/low)
+volatile bool logicValue = 0; // current PWM output level (high/low)
 unsigned long lastSync = 0; // millis() timestamp of last NTP sync
 bool networkSyncEnabled = true; // false when user disables NTP
 const char* const ntpServer = "pool.ntp.org";
-esp_timer_handle_t signalTimer = nullptr; // 1ms high-priority timer for PWM output
+esp_timer_handle_t signalTimer = nullptr; // 10ms high-priority timer for PWM output
 
 // Double-buffered broadcast data shared between loop() and the timer ISR.
 // loop() writes the inactive buffer then swaps the pointer atomically.
@@ -237,7 +237,7 @@ void setup() {
 
   statusLED.setReady();
 
-  // Start the high-priority signal timer (1ms interval).
+  // Start the high-priority signal timer (10ms interval).
   // This ensures PWM transitions happen on time regardless of WiFi/ESPUI activity.
   const esp_timer_create_args_t timerArgs = {
       .callback = onSignalTimer,
@@ -246,8 +246,8 @@ void setup() {
       .name = "signal_timer"
   };
   esp_timer_create(&timerArgs, &signalTimer);
-  esp_timer_start_periodic(signalTimer, 1000);  // 1ms = 1000us
-  Serial.println("Signal timer started (1ms interval)");
+  esp_timer_start_periodic(signalTimer, 10000);  // 10ms = 10000us
+  Serial.println("Signal timer started (10ms interval)");
 }
 
 void loop() {
@@ -337,6 +337,4 @@ void loop() {
     statusLED.show();
   }  
 }
-
-
 
