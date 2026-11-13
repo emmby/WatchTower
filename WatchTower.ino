@@ -70,6 +70,9 @@ MSFSignal msf;
 JJYSignal jjy;
 RadioTimeSignal* signalGenerator = &wwvb; // active protocol encoder
 
+const char* const SIGNAL_NAMES[] = {"WWVB", "DCF77", "MSF", "JJY"};
+RadioTimeSignal* const SIGNAL_GENERATORS[] = {&wwvb, &dcf77, &msf, &jjy};
+
 StatusLED statusLED;
 WebUI webUI;
 WiFiManager wifiManager;
@@ -77,7 +80,7 @@ WiFiUDP udp;
 MDNS mdns(udp);
 Preferences preferences;
 volatile bool logicValue = 0; // current PWM output level (high/low)
-unsigned long lastSync = 0; // millis() timestamp of last NTP sync
+struct timeval lastSync = {0, 0}; // wall-clock timestamp of last NTP sync
 bool networkSyncEnabled = true; // false when user disables NTP
 const char* const ntpServer = "pool.ntp.org";
 esp_timer_handle_t signalTimer = nullptr; // 10ms high-priority timer for PWM output
@@ -109,14 +112,39 @@ void clearBroadcastValues(TimeCodeSymbol* buf) {
     }
 }
 
+// Look up a signal generator by name, defaulting to WWVB.
+RadioTimeSignal* findSignal(const String& name) {
+  int count = sizeof(SIGNAL_NAMES) / sizeof(SIGNAL_NAMES[0]);
+  for (int i = 0; i < count; ++i) {
+    if (name == SIGNAL_NAMES[i]) {
+      return SIGNAL_GENERATORS[i];
+    }
+  }
+  return &wwvb;
+}
+
 // ========================
 // Callbacks
 // ========================
 
+// Called by WebUI when the user selects a different signal protocol.
+void onSignalSelected(const String& name) {
+  signalGenerator = findSignal(name);
+  preferences.putString("signal", signalGenerator->getName());
+  Serial.println("Signal changed to: " + signalGenerator->getName());
+
+  ledcDetach(PIN_ANTENNA);
+  ledcAttach(PIN_ANTENNA, signalGenerator->getFrequency(), 8);
+}
+
 // A callback that tracks when we last sync'ed the
 // time with the ntp server
 void time_sync_notification_cb(struct timeval *tv) {
-  lastSync = millis();
+  if (tv) {
+    lastSync = *tv;
+  } else {
+    gettimeofday(&lastSync, NULL);
+  }
 }
 
 // A callback that is called when the device
@@ -127,7 +155,7 @@ void accesspointCallback(WiFiManager*) {
 }
 
 /**
- * High-priority timer callback (runs every 1ms).
+ * High-priority timer callback (runs every 10ms).
  * Reads the RTC, looks up the pre-computed bit, and updates the PWM pin.
  * This runs at higher priority than WiFi/ESPUI, eliminating network-induced jitter.
  *
@@ -136,7 +164,7 @@ void accesspointCallback(WiFiManager*) {
  *     using the signal generator (WWVB, DCF77, MSF, or JJY). This involves
  *     timezone lookups and daylight savings calculations that are too heavy for an
  *     interrupt service routine (ISR).
- *  2. A high-priority esp_timer callback (onSignalTimer, every 1ms) reads the
+ *  2. A high-priority esp_timer callback (onSignalTimer, every 10ms) reads the
  *     pre-computed broadcast buffer, determines the correct pulse-width modulation (PWM)
  *     level for the current time, and writes it to the antenna pin.
  * This ensures the PWM output is always on time, even when WiFi, ESPUI, or
@@ -186,20 +214,17 @@ void setup() {
   preferences.begin("watchtower", false);
   networkSyncEnabled = preferences.getBool("net_sync", true);
   String savedSignal = preferences.getString("signal", "WWVB");
-  if (savedSignal == "DCF77") signalGenerator = &dcf77;
-  else if (savedSignal == "MSF") signalGenerator = &msf;
-  else if (savedSignal == "JJY") signalGenerator = &jjy;
-  else signalGenerator = &wwvb;
+  signalGenerator = findSignal(savedSignal);
 
   clearBroadcastValues(broadcastA);
   clearBroadcastValues(broadcastB);
 
   // --- WEB UI SETUP ---
   if( ENABLE_WEB_UI ) {
-    webUI.begin(TIMEZONE, signalGenerator,
-                wwvb, dcf77, msf, jjy,
-                preferences, PIN_ANTENNA, ntpServer,
-                networkSyncEnabled, lastSync, mdns);
+    int signalCount = sizeof(SIGNAL_NAMES) / sizeof(SIGNAL_NAMES[0]);
+    webUI.begin(TIMEZONE, SIGNAL_NAMES, signalCount,
+                signalGenerator->getName().c_str(), onSignalSelected,
+                preferences, ntpServer, networkSyncEnabled, mdns);
   }
   
   // --- TIME SYNC ---
@@ -257,7 +282,6 @@ void loop() {
   struct tm buf_now_utc; // current time in UTC
   struct tm buf_now_local; // current time in localtime
   struct tm buf_today_start, buf_tomorrow_start; // start of today and tomrrow in localtime
-  static int prev_second_display = -1; // for tracking UI updates
 
   gettimeofday(&now,NULL);
   localtime_r(&now.tv_sec, &buf_now_local);
@@ -310,11 +334,12 @@ void loop() {
     snprintf(timeStringBuff2, sizeof(timeStringBuff2), "%s.%03d%s", timeStringBuff, now.tv_usec/1000, timeStringBuff3 ); // time+millis+tz
 
     char lastSyncStringBuff[100]; // Buffer to hold the formatted time string
-    if (lastSync == 0) {
+    if (lastSync.tv_sec == 0) {
         snprintf(lastSyncStringBuff, sizeof(lastSyncStringBuff), "Never");
     } else {
-        unsigned long secondsSinceSync = (millis() - lastSync) / 1000;
-        snprintf(lastSyncStringBuff, sizeof(lastSyncStringBuff), "%lus ago", secondsSinceSync);
+        struct tm buf_lastSync;
+        localtime_r(&lastSync.tv_sec, &buf_lastSync);
+        strftime(lastSyncStringBuff, sizeof(lastSyncStringBuff), "%b %d %H:%M", &buf_lastSync);
     }
     Serial.printf("%s [last sync %s]: %s\n",timeStringBuff2, lastSyncStringBuff, logicValue ? "1" : "0");
 
@@ -327,7 +352,7 @@ void loop() {
 
     // Check for stale sync (24 hours)
     // Only restart if it's past 12pm local time to avoid rebooting while a device is syncing
-    if( networkSyncEnabled && (millis() - lastSync > 24 * 60 * 60 * 1000) && buf_now_local.tm_hour >= 12 ) {
+    if( networkSyncEnabled && lastSync.tv_sec > 0 && (now.tv_sec - lastSync.tv_sec > 60 * 60 * 24) && buf_now_local.tm_hour >= 12 ) {
       Serial.println("Last sync more than 24 hours ago, rebooting.");
       statusLED.setError();
       delay(3000);

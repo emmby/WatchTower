@@ -7,10 +7,6 @@
 #include <ArduinoMDNS.h>
 #include "customJS.h"
 #include "include/RadioTimeSignal.h"
-#include "include/WWVBSignal.h"
-#include "include/DCF77Signal.h"
-#include "include/MSFSignal.h"
-#include "include/JJYSignal.h"
 
 
 // Encapsulates all ESPUI web dashboard setup and per-second updates.
@@ -22,24 +18,21 @@ public:
     // Pointers/references are stored — the caller owns the objects.
     void begin(
         const char* timezone,
-        RadioTimeSignal*& signalGenerator,
-        WWVBSignal& wwvb, DCF77Signal& dcf77, MSFSignal& msf, JJYSignal& jjy,
+        const char* const* signalNames,
+        int signalCount,
+        const char* initialSignalName,
+        void (*onSignalChange)(const String&),
         Preferences& preferences,
-        int pinAntenna,
         const char* ntpServer,
         bool& networkSyncEnabledRef,
-        unsigned long& lastSyncRef,
         MDNS& mdns
     ) {
         _instance = this;
         _timezone = timezone;
-        _wwvb = &wwvb; _dcf77 = &dcf77; _msf = &msf; _jjy = &jjy;
-        _signalGenerator = &signalGenerator;
+        _onSignalChangeCallback = onSignalChange;
         _preferences = &preferences;
-        _pinAntenna = pinAntenna;
         _ntpServer = ntpServer;
         _networkSyncEnabled = &networkSyncEnabledRef;
-        _lastSync = &lastSyncRef;
 
         ESPUI.setVerbosity(Verbosity::Quiet);
 
@@ -63,16 +56,10 @@ public:
         ESPUI.updateVisibility(_ui_manual_time, !*_networkSyncEnabled);
 
         _ui_signal_select = ESPUI.addControl(ControlType::Select, "Signal Protocol", "", ControlColor::Turquoise, Control::noParent, _onSignalChange);
-        ESPUI.addControl(ControlType::Option, "WWVB", "WWVB", ControlColor::Alizarin, _ui_signal_select);
-        ESPUI.addControl(ControlType::Option, "DCF77", "DCF77", ControlColor::Alizarin, _ui_signal_select);
-        ESPUI.addControl(ControlType::Option, "MSF", "MSF", ControlColor::Alizarin, _ui_signal_select);
-        ESPUI.addControl(ControlType::Option, "JJY", "JJY", ControlColor::Alizarin, _ui_signal_select);
-
-        // Set initial selection
-        if (*_signalGenerator == _wwvb) ESPUI.updateSelect(_ui_signal_select, "WWVB");
-        else if (*_signalGenerator == _dcf77) ESPUI.updateSelect(_ui_signal_select, "DCF77");
-        else if (*_signalGenerator == _msf) ESPUI.updateSelect(_ui_signal_select, "MSF");
-        else if (*_signalGenerator == _jjy) ESPUI.updateSelect(_ui_signal_select, "JJY");
+        for (int i = 0; i < signalCount; ++i) {
+            ESPUI.addControl(ControlType::Option, signalNames[i], signalNames[i], ControlColor::Alizarin, _ui_signal_select);
+        }
+        ESPUI.updateSelect(_ui_signal_select, initialSignalName);
 
         ESPUI.setPanelWide(_ui_broadcast, true);
         ESPUI.setElementStyle(_ui_broadcast, "font-family: monospace");
@@ -90,7 +77,7 @@ public:
     void update(
         const struct tm& local,
         const struct tm& utc,
-        unsigned long lastSync,
+        const struct timeval& lastSync,
         volatile const TimeCodeSymbol* broadcast
     ) {
         char buf[62];
@@ -140,11 +127,12 @@ public:
         ESPUI.print(_ui_uptime, buf);
 
         // Last Sync
-        if (lastSync == 0) {
+        if (lastSync.tv_sec == 0) {
             ESPUI.print(_ui_last_sync, "Never");
         } else {
-            unsigned long secondsSinceSync = (millis() - lastSync) / 1000;
-            snprintf(buf, sizeof(buf), "%lus ago", secondsSinceSync);
+            struct tm buf_lastSync;
+            localtime_r(&lastSync.tv_sec, &buf_lastSync);
+            strftime(buf, sizeof(buf), "%b %d %H:%M", &buf_lastSync);
             ESPUI.print(_ui_last_sync, buf);
         }
 
@@ -154,15 +142,9 @@ private:
     // --- Shared state (owned by WatchTower.ino, stored by pointer/ref) ---
     const char* _timezone = nullptr;
     const char* _ntpServer = nullptr;
-    int _pinAntenna = 0;
-    WWVBSignal* _wwvb = nullptr;
-    DCF77Signal* _dcf77 = nullptr;
-    MSFSignal* _msf = nullptr;
-    JJYSignal* _jjy = nullptr;
-    RadioTimeSignal** _signalGenerator = nullptr;
+    void (*_onSignalChangeCallback)(const String&) = nullptr;
     Preferences* _preferences = nullptr;
     bool* _networkSyncEnabled = nullptr;
-    unsigned long* _lastSync = nullptr;
 
     String _manualDate = "";
     String _manualTime = "";
@@ -231,17 +213,9 @@ private:
 
     void handleSignalChange(Control* sender, int value) {
         if (sender->id != _ui_signal_select) return;
-        String selected = sender->value;
-        if (selected == "WWVB")       *_signalGenerator = _wwvb;
-        else if (selected == "DCF77") *_signalGenerator = _dcf77;
-        else if (selected == "MSF")   *_signalGenerator = _msf;
-        else if (selected == "JJY")   *_signalGenerator = _jjy;
-
-        _preferences->putString("signal", (*_signalGenerator)->getName());
-        Serial.println("Signal changed to: " + (*_signalGenerator)->getName());
-
-        ledcDetach(_pinAntenna);
-        ledcAttach(_pinAntenna, (*_signalGenerator)->getFrequency(), 8);
+        if (_onSignalChangeCallback) {
+            _onSignalChangeCallback(sender->value);
+        }
     }
 
     void handleSyncToggle(Control* sender, int value) {

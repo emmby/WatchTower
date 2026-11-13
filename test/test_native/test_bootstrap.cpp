@@ -25,8 +25,7 @@ SPIClass SPI;
 
 // Core functions
 void delay(unsigned long ms) {}
-unsigned long mock_millis = 0;
-unsigned long millis() { return mock_millis; }
+unsigned long millis() { return 0; }
 unsigned long micros() { return 0; }
 void pinMode(uint8_t pin, uint8_t mode) {}
 void digitalWrite(uint8_t pin, uint8_t val) {}
@@ -113,10 +112,9 @@ void setUp(void) {
     last_ledc_freq = 0;
     last_ledc_duty = 999;
     ledc_write_count = 0;
-    mock_millis = 0;
     logicValue = 0;
     transitionOccurred = false;
-    lastSync = 0;
+    lastSync = {0, 0};
     // Set TZ to UTC for predictable testing
     setenv("TZ", "UTC", 1);
     tzset();
@@ -416,8 +414,7 @@ void test_stale_sync_does_not_reboot_before_noon(void) {
     tzset();
     mock_tv.tv_sec = 1766685600;
     mock_tv.tv_usec = 900000;
-    mock_millis = 25UL * 3600UL * 1000UL; // 25 hours uptime
-    lastSync = 1; // 25 hours ago (stale)
+    lastSync.tv_sec = mock_tv.tv_sec - (25 * 3600); // 25 hours ago (stale)
 
     setup();
     loop(); // populate activeBroadcast
@@ -433,8 +430,7 @@ void test_stale_sync_reboots_at_or_after_noon(void) {
     // 2025-12-25 12:00:00 UTC (12 PM noon)
     mock_tv.tv_sec = 1766664000;
     mock_tv.tv_usec = 900000;
-    mock_millis = 25UL * 3600UL * 1000UL; // 25 hours uptime
-    lastSync = 1; // 25 hours ago (stale)
+    lastSync.tv_sec = mock_tv.tv_sec - (25 * 3600); // 25 hours ago (stale)
 
     setup();
     loop(); // populate activeBroadcast
