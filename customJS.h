@@ -20,13 +20,15 @@ function convertToTable(containerSpan) {
     const DRAW_RATIOS = { 'M': 0.8, '0': 0.2, '1': 0.5 };
 
     // --- Protocol Bit Group Definitions ---
-    // Each group: { label, start, end, weights: { bitIndex: bcdWeight } }
+    // Each group: { label, start, end, weights?: { bitIndex: weightOrSubLabel }, decode?: { bitPattern: displayText } }
     const PROTOCOL_GROUPS = {
         WWVB: [
             { label: 'Minutes', start: 1, end: 8, weights: {1:40, 2:20, 3:10, 5:8, 6:4, 7:2, 8:1} },
             { label: 'Hours', start: 12, end: 18, weights: {12:20, 13:10, 15:8, 16:4, 17:2, 18:1} },
             { label: 'Day of year', start: 22, end: 33, weights: {22:200, 23:100, 25:80, 26:40, 27:20, 28:10, 30:8, 31:4, 32:2, 33:1} },
-            { label: 'Year', start: 45, end: 53, weights: {45:80, 46:40, 47:20, 48:10, 50:8, 51:4, 52:2, 53:1} }
+            { label: 'Year', start: 45, end: 53, weights: {45:80, 46:40, 47:20, 48:10, 50:8, 51:4, 52:2, 53:1} },
+            { label: 'LY', start: 55, end: 55, decode: { '0': 'No', '1': 'Yes' } },
+            { label: 'DST', start: 57, end: 58, weights: {57:'D1', 58:'D2'}, decode: { '00': 'Std', '10': 'Begins', '11': 'DST', '01': 'Ends' } }
         ],
         JJY: [
             { label: 'Minutes', start: 1, end: 8, weights: {1:40, 2:20, 3:10, 5:8, 6:4, 7:2, 8:1} },
@@ -67,9 +69,11 @@ function convertToTable(containerSpan) {
     // Build lookup maps from the group definitions
     const bitToWeight = {};
     BIT_GROUPS.forEach(g => {
-        Object.entries(g.weights).forEach(([bit, weight]) => {
-            bitToWeight[parseInt(bit)] = weight;
-        });
+        if (g.weights) {
+            Object.entries(g.weights).forEach(([bit, weight]) => {
+                bitToWeight[parseInt(bit)] = weight;
+            });
+        }
     });
 
     // --- 1. Setup Container & Generate Table ---
@@ -126,15 +130,22 @@ function convertToTable(containerSpan) {
 
     // --- Compute group values from bit data ---
     BIT_GROUPS.forEach(group => {
-        let value = 0;
-        Object.entries(group.weights).forEach(([bit, weight]) => {
-            const idx = parseInt(bit);
-            if (idx < characters.length && characters[idx] === '1') {
-                value += weight;
-            }
-        });
+        let displayValue = '';
+        if (group.decode) {
+            const bitPattern = characters.slice(group.start, group.end + 1).join('');
+            displayValue = group.decode[bitPattern] || '';
+        } else if (group.weights) {
+            let value = 0;
+            Object.entries(group.weights).forEach(([bit, weight]) => {
+                const idx = parseInt(bit);
+                if (idx < characters.length && characters[idx] === '1') {
+                    value += weight;
+                }
+            });
+            displayValue = value;
+        }
         const cell = table.querySelector(`.group-value[data-group="${group.label}"]`);
-        if (cell) cell.textContent = value;
+        if (cell) cell.textContent = displayValue;
     });
 
     // --- 2. Measure Dimensions ---
