@@ -1,4 +1,4 @@
-# The Watch Tower WWVB transmitter
+# The Watch Tower time signal transmitter
 
 ![](docs/ezgif-2a44364473c432.gif)
 
@@ -6,7 +6,15 @@ There are some beautiful radio-controlled watches available these days from Citi
 
 In the US, these watches work by receiving a 60-bit 1-Hz signal on a 60-kHz carrier wave broadcast from Fort Collins, Colorado called [WWVB](https://en.wikipedia.org/wiki/WWVB). The broadcast is quite strong and generally covers the entire continental US, but some areas of the country can have unreliable reception. I live in the SF Bay Area in an area with high RF noise and my reception can be spotty. My watches sync often enough that it’s not an issue 363 days out of the year, but sometimes they can miss DST shifts for a day or two. The east coast is known to be even more challenging. And people who live in other countries such as Australia have generally been out of luck.
 
+Similar systems exist in other parts of the world, such as [DCF77](https://en.wikipedia.org/wiki/DCF77) in Germany (covering much of Europe), [MSF](https://en.wikipedia.org/wiki/Time_from_NPL_(MSF)) in the UK, and [JJY](https://en.wikipedia.org/wiki/JJY) in Japan.
+
 Wouldn’t it be great if anyone anywhere in the world could set up a home transmitter to broadcast the time so their watches were always in sync?
+
+WatchTower supports all of these signals! By default it transmits WWVB, but it can be easily configured to transmit DCF77, MSF, or JJY.
+
+> [!NOTE]
+> DCF77, MSF, and JJY support is experimental and has not been extensively tested.
+> Please file an issue if you run into any problems.
 
 WWVB has been around awhile and there have been various other projects ([1](https://www.instructables.com/WWVB-radio-time-signal-generator-for-ATTINY45-or-A/),[2](https://github.com/anishathalye/micro-wwvb)) that have demonstrated the feasibility of making your own WWVB transmitter. But these all had very limited range. I wanted to build something that could cover my whole watch stand and be based on a more familiar toolset for the typical hobbyist, namely USB-based 32-bit microcontroller development boards, WiFi, and Arduino. My goal was to make something approachable, reliable, and attractive enough it could sit with my watch collection.
 
@@ -15,6 +23,9 @@ WWVB has been around awhile and there have been various other projects ([1](http
 The FCC requires a license to transmit, but has an [exemption](https://www.law.cornell.edu/cfr/text/47/15.209) for 60 kHz transmitters as long as the field strength is under 40 *μ*V/m at 300 meters. You will [definitely not](https://github.com/emmby/WatchTower/issues/9) exceed this limit 💪🏼
 
 ## About WWVB
+
+> [!NOTE]
+> This section will dive into WWVB because that's the signal the WatchTower uses by default. You can check wikipedia for more details on JJY, DCF77, and MSF.
 
 The classic WWVB transmits one bit of information per second (1Hz) and takes one minute (60 bits) to transmit a full time and date frame.
 
@@ -91,11 +102,14 @@ Now that you understand how it works, let’s build the transmitter!
 
 ## Components
 
+![Components](docs/IMG_1476.jpg)
+
 - An ESP32-based development board such as the AdaFruit QT Py ESP32, AdaFruit Feather ESP32 v2, Arduino Nano ESP32, Seeed Xiao ESP32C3 or similar. I used the [QT Py ESP32](https://www.adafruit.com/product/5395).
 - An H-bridge amplifier circuit. You can build your own, or I used the [Adafruit DRV8833 DC/Stepper Motor Driver Breakout Board](https://www.adafruit.com/product/3297). Boards using the TB6612 would probably also work, you just need something that can handle 5V or more, a few hundred milliamps and a switching frequency of 60khz or higher.
-- One or two [60khz ferrite rod antennas](https://www.canaduino.ca/product/60khz-atomic-clock-receiver-v4-wwvb-msf-jjy60/). You can pull one from an existing quartz radio-controlled movement, or I bought mine from Canaduino. If you want better reliability at distance you may consider using a second antenna. Some users have had luck with a simple 20 inch length of straight copper wire, but I found the signal to be too weak to be reliable.
-- Bread board and [jumper wires](https://www.amazon.com/dp/B08YRGVYPV).
-- PCB Mount Screw Terminal Block connector to connect your antenna(s), something like [this](https://www.amazon.com/dp/B09F6TC7RP). Not strictly necessary but nice to have. Use a two pin terminal if you only plan to have one antenna, or a four pin if you want two antennas.
+- Two [60khz ferrite rod antennas](https://www.canaduino.ca/product/60khz-atomic-clock-receiver-v4-wwvb-msf-jjy60/). You can pull these from existing quartz radio-controlled movements, or I bought mine from Canaduino. (You can leave out the second antenna if you want, though using two at a 90 degree angle gives much better reception across different watch orientations.) Some users have had luck with a simple 20 inch length of straight copper wire, but I found the signal to be too weak to be reliable.
+- A **100µF 16V electrolytic capacitor** (47µF–220µF rated at 10V or higher also works) to buffer the amplifier power supply and absorb inductive flyback when driving the antennas from USB power.
+- A breadboard (for prototyping) or [Adafruit 1/4-sized Perma-Proto](https://www.adafruit.com/product/589) (shown above, fits the 3D-printed enclosure), and [jumper wires](https://www.amazon.com/dp/B08YRGVYPV).
+- A 4-pin PCB Mount Screw Terminal Block connector to connect your antennas, something like [this](https://www.amazon.com/dp/B09F6TC7RP). Not strictly necessary but nice to have (or a 2-pin terminal if you only plan to use a single antenna).
 
 ## Optional
 
@@ -104,10 +118,8 @@ None of the following is necessary, but some of it might be nice to have.
 - **Oscilloscope**. It can be hard to know if your circuit is doing anything without an oscilloscope. There are some micro DSOs for around $100, and some android-based table DSOs for around $200, but I like the Rigol DHO800 series as an entry-level oscilloscope if your budget can stretch to around $400. A digital multimeter or an individual LED can also be helpful in a pinch.
 - **10V power supply**. If you need more power you can use an external power supply. I found the signal to be strong enough without it and preferred the convenience of a single USB power supply. If you want to go up to 13V, switch to the [TB6612](https://www.adafruit.com/product/2448)
 - **3D printer** if you would like to print the tower enclosure for your circuit.
-- **Permaboard** or **Perma-proto**. After you’ve prototyped your circuit you’ll want to move it to something more permanent. [Perma-proto](https://www.adafruit.com/product/571) is convenient because it exactly matches your breadboard layout. Permaboard is more configurable but less convenient. Either one can be cut to size.
+- **Permaboard** or **Perma-proto**. After you’ve prototyped your circuit you’ll want to move it to something more permanent. An [Adafruit 1/4-sized Perma-Proto](https://www.adafruit.com/product/589) is convenient because it matches a standard breadboard layout and fits directly into the 3D-printed enclosure without needing to be cut. Permaboard is more configurable but less convenient.
 - **Soldering iron**. If you’re using permaboard, you’ll need a soldering iron. I love the [Pinecil v2](https://pine64.com/product/pinecil-smart-mini-portable-soldering-iron/), it’s USB-powered, auto-sleep, nearly instant-on, open-source and temperature controlled.
-- **GPS module**. The nice thing about using module development boards like the Feather, Grove, Arduino, etc. is their support for additional modules. The [AdaFruit Ultimate GPS FeatherWing](https://www.adafruit.com/product/3133) pairs well with their Feather boards and includes an accurate RTC. If you go GPS, you don’t necessarily need a microcontroller with WiFi.
-- **LCD display**. This can be a nice touch and can make it easier to tell if your tower is working or not. I like the [Adafruit ESP32 TFT Feather](https://www.adafruit.com/product/5483) or similar. I made an earlier prototype with a screen that displayed the current time, but didn’t like the way the screen lit up my bedroom at night. You can also connect many external displays using the simple I2C connector on many dev boards.
 
 ## Instructions
 
@@ -140,29 +152,38 @@ https://github.com/emmby/WatchTower
 
 Upload the Arduino sketch to your Arduino using the Arduino IDE.
 
-The LED will light up yellow/orange while connecting to WiFi. If you haven’t yet set your SSID, connect your phone to SSID: WWVB and follow the instructions to enter your wifi password.
+The LED will light up yellow/orange while connecting to WiFi. If you haven’t yet set your SSID, connect your phone to SSID: `WatchTower` and follow the instructions to enter your wifi password.
 
 Once the network is connected and the time has sync’d, the light will turn green briefly and then turn off.
+
+**Built-in Web UI (`http://watchtower.local`)**
+
+Once connected to WiFi, the Watch Tower hosts a built-in web dashboard accessible at `http://watchtower.local` (or via your board's local IP address). It displays:
+
+- **Broadcast Waveform**: A live 60-second visual waveform and styled bit-group table (`M`, `0`, `1`, `-` for seconds `00`–`59`, plus bit weights and decoded field values for the active protocol) showing the current frame as it is transmitted in real time.
+- **Current Time**, **Date**, and configured **Timezone**.
+- **System Uptime** and **Last NTP Sync** timestamp.
+
+If you prefer not to run a web server on your local network, you can disable it by setting `ENABLE_WEB_UI = false` in `WatchTower.ino`.
 
 **Setup()**
 
 The Arduino setup() method does a few things.
 
-Initialize the components we’ll be using, particularly the serial port, LEDs, WiFi, output pins, timezone, and network time sync (NTP). The network time sync will happen automatically in the background every hour. This is important because the realtime clock (RTC) on most microcontrollers are notoriously subject to drift and are rarely accurate for more than a few hours.
+Initialize the components we’ll be using, particularly the serial port, LEDs, WiFi, mDNS + Web UI (`http://watchtower.local`), output pins, timezone, and network time sync (NTP). The network time sync will happen automatically in the background every hour. This is important because the realtime clock (RTC) on most microcontrollers are notoriously subject to drift and are rarely accurate for more than a few hours.
 
-Start the 60 kHz carrier wave at a 50% duty cycle.
+Start the 60 kHz carrier wave and register a 10ms high-priority hardware timer (`esp_timer`) to drive the WWVB pulse-width transitions without jitter from WiFi or Web UI activity.
 
-**Loop()**
+**Signal Timer & Loop()**
 
-Arduino then moves to the loop(), which continuously performs the following operations:
+A 10ms `esp_timer` callback (`onSignalTimer`) continuously reads the UTC time from the RTC, computes whether the 60 kHz carrier wave should be set to 50% (logical high) or 0% (logical low) for that specific moment in time, and updates `PIN_ANTENNA` immediately on each edge. Time is always UTC, except for the DST bits which are relative to your local timezone.
 
-- Get the current time in UTC
-- Convert it to your local timezone to determine DST
-- Compute whether the 60 kHz carrier wave should be set to 50% (logical high) or 0% (logical low) for that specific moment in time. Time is always UTC, except for the DST bit which is relative to your local timezone.
-- Set the PIN_ANTENNA to high or low based on that value.
-- [Optional] you can flash the led for high/low PWM. This is nice for making sure things are working, but it’s grounds for divorce in the bedroom.
+Meanwhile, `loop()` continuously performs the following background operations:
 
-Do some other nice-to-haves like logging, setting LEDs and/or rebooting when there are issues.
+- Update the local timezone DST flags (`today_start_isdst` and `tomorrow_start_isdst`).
+- When a signal transition occurs, log the timestamp and logic state to Serial and update the Web UI (`http://watchtower.local`) once per second with the latest time, uptime, and broadcast waveform.
+- [Optional] Flash the onboard NeoPixel LED for high/low PWM. This is nice for making sure things are working, but it’s grounds for divorce in the bedroom.
+- Reboot if NTP has not synced in more than 24 hours (deferred until after 12:00 PM local time so it never interrupts overnight watch syncs).
 
 ### Verify the microcontroller alone
 
@@ -205,39 +226,40 @@ Looks great! Everything is working as expected.
 
 Now that you’ve verified the microcontroller is working, it’s time to put all the components together.
 
-The electronics consist of three basic components: the microcontroller board, the amplifier breakout board, and the antenna(s).
+The electronics consist of three basic components: the microcontroller board, the amplifier breakout board (with bulk capacitor), and the antennas.
 
-The connections are quite simple, you can do them on a breadboard or a proto board. I recommend starting with a breadboard, which will look identical to this perma-proto board but without the solder:
+The connections are quite simple, you can do them on a breadboard or a proto board. I recommend starting with a breadboard first, and then soldering onto a 1/4-sized Perma-Proto board with the microcontroller and jumper wires on the front and the DRV8833 mounted on the back so everything fits compactly:
 
-![](docs/PXL_20250810_160436141.jpg)
+![Perma-Proto front](docs/IMG_1477.jpg)
 
-**Microcontroller board** (Adafruit ESP32 QT Py in this photo)
+![Perma-Proto back](docs/IMG_1478.jpg)
 
-- Connect the 5V pin to the power plane (photo: J1).
-- Connect the ground pin to the ground plane (photo: J2).
-- Connect your signal pin [M0] to the input pin of your amplifier [AIN1] (photo: J4>J15).
+**Microcontroller board** (Adafruit ESP32 QT Py, mounted on the front at `I1–I7` and `E1–E7`)
 
-**DRV8833 Amplifier breakout**
+- Connect the 5V pin to the `+` power plane (photo: J1).
+- Connect the ground pin to the `-` ground plane (photo: J2).
+- Connect your signal pin [MO] to the input pin of your amplifier [AIN1] (photo: J4>J15).
 
-I decided to leave a gap between my microcontroller board and my amplifier board. This will support an optional second antenna mounted vertically, and it also makes it easier to access the STEMMA QT I2c connector on the QT Py.
+**DRV8833 Amplifier breakout** (mounted on the **back** at `H8–H15` and `E9–E14`)
 
-- Connect the second input pin [AIN2] of your amplifier to ground (photo: J16).
-- The Adafruit DRV8833 motor driver board has a sleep pin that needs to be pulled high to enable the breakout, so connect that to power 5v or 3v power, whatever is convenient. We used 5V here. (photo: J17)
-- Connect ground to the ground plane. (photo: J21)
-- [Optional] Connect the “motor” voltage [VM] to your 5V plane (photo: J22). This is needed if you are powering your amplifier via USB like I have here, but it should not be done if you are planning to use an external power supply on VMotor.
-The antenna and amplifier circuit can contribute some noise to your 5V line. If you’re worried about it you might use an external power supply instead, but I found for these settings that the noise was negligible (although see Alternatives Considered for some lessons learned).
-- Optional: connect BIN2 to ground (photo: J18). This is only needed if you want to use a second antenna.
-- Optional: connect BIN1 to AIN1 (**not in photo**: I15>I19). For a second antenna.
+Mounting the amplifier breakout on the back of the 1/4-sized Perma-Proto board keeps the footprint small enough to fit into the enclosure without cutting the PCB, and leaves the STEMMA QT I2C connector on the QT Py accessible. Note that because the DRV8833 is soldered to the back of the board, its pins run from column 15 (`AIN1`) on the right side of the front view down to column 8 (`VM`) near the middle:
 
-**Antenna(s)**
+- Connect the second input pin [AIN2] of your amplifier to ground (photo: J14).
+- The Adafruit DRV8833 motor driver board has a sleep pin [SLP] that needs to be pulled high to enable the breakout, so connect that to 5V or 3V power, whatever is convenient. We used 5V here. (photo: J13)
+- Connect ground [GND] to the ground plane. (photo: J9)
+- [Optional] Connect the “motor” voltage [VM] to your 5V plane (photo: J8). This is needed if you are powering your amplifier via USB like I have here, but it should not be done if you are planning to use an external power supply on VMotor.
+- **100µF 16V Capacitor**: Solder the capacitor across the `VMotor` `+` and `-` pads on the DRV8833 breakout (mind the polarity: negative stripe to `-`, positive lead to `+`) and bend it flat against the back of the board. Driving two inductive ferrite rod antennas at 60 kHz draws rapid current pulses and returns inductive flyback energy to the supply rail; this capacitor buffers the 5V USB rail against voltage spikes and brownouts.
+- Connect [BIN2] to ground (photo: J12) and connect [BIN1] to [AIN1] (photo: I11>I15) to drive the second antenna channel. (You can leave these two jumpers out if you choose to only use a single antenna.)
 
-- You can plug your antennas directly into your breadboard, or use a 0.1" Pitch PCB Mount Screw Terminal Block Connector connected to [AOUT1], [AOUT2], [BOUT2], and [BOUT1] (photo: C16, C17, C18, C19). If you are only using one antenna, you only need [AOUT1] and [AOUT2].
+**Antennas**
 
-  The orientation of the antenna has a profound effect on the strength of the signal. I recommend using a second antenna at a 90 degree orientation to the first. You won't get a more powerful signal, but by having a second signal at a 90 degree orientiation you significanly increase the chance that your watches will be able to pick up a signal (see the section on antenna orientation below). The amplifier can easily handle two antennas.
+- You can plug your antennas directly into your breadboard, or use a 0.1" Pitch PCB Mount Screw Terminal Block Connector on the front of the board connected to [AOUT1], [AOUT2], [BOUT2], and [BOUT1] (photo: C14, C13, C12, C11). (If you choose to leave out the second antenna, you only need [AOUT1] and [AOUT2].)
+
+  The orientation of the antenna has a profound effect on the strength of the signal. Mounting two antennas at a 90 degree orientation to each other doesn't produce a more powerful signal, but it significantly increases the chance that your watches will be able to pick up a signal from more orientations (see the section on antenna orientation below). The amplifier can easily handle two antennas.
 
   With one antenna, I was getting around 12 inches of range with the way my watches were oriented. With the second antenna, that jumped up to more than 6 feet!
 
-  The STL tower has a hole in the center to allow space for a 60mm ferrite rod antenna mounted vertically in the gap between the microcontroller and amplifier PCBs.
+  The STL tower has a hole in the center to allow space for a 60mm ferrite rod antenna mounted vertically. Add a piece of electrical or masking tape to the end of the vertical antenna to prevent it from abrading the PCB or shorting the contacts.
 
 
 
@@ -257,22 +279,16 @@ The final test is to verify it works with a real watch!
 
 ### Assembling the enclosure
 
-The enclosure is designed for a 51mm x 63mm perma-proto, which is the size of a half size perma-proto with the excess trimmed. You can trim a proto board by scoring along a straightedge with a utility knife and then bending the board at the score, either by pressing it down on a hard surface at an angle or using a vise grip. Or feel free to modify the Autodesk Fusion file to the size of your own board.
-
-![image.png](docs/image%205.png)
-
-Here I also made a quick and dirty “mount” for the antenna by twisting a couple of loops of wire and soldering them to the perma proto. Hot glue also works great.
-
+The enclosure is designed to fit an [Adafruit 1/4-sized Perma-Proto](https://www.adafruit.com/product/589) (43mm x 51mm) directly without any trimming. Feel free to modify the Autodesk Fusion file if you are using a different board size.
 
 Print the enclosure using a 3D printer. I used standard PLA, standard 0.4mm nozzle, and pretty much default slicer settings with no supports.
 
-
-* STL: [The Watch Tower.stl](enclosure/The%20Watch%20Tower%20v18.stl)
-* Autodesk Fusion: [The Watch Tower.f3d](enclosure/The%20Watch%20Tower%20v18.f3d)
+* STL: [The Watch Tower.stl](enclosure/The%20Watch%20Tower.stl)
+* Autodesk Fusion: [The Watch Tower.f3d](enclosure/The%20Watch%20Tower.f3d)
 
 ![image.png](docs/image%206.png)
 
-Insert the circuit board into the base. Orient the second antenna between the two PCBs and fit it into the hole in the tower. Then press the lid for a snap fit.
+Insert the circuit board into the base, fit the vertical antenna into the hole in the tower, and place the horizontal antenna in the base. Then press the lid for a snap fit.
 
 ## Enjoy!
 
