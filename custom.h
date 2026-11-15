@@ -174,6 +174,7 @@ function convertToTable(containerSpan) {
 
     // --- 3. Configure Canvas ---
     const canvas = document.createElement('canvas');
+    canvas.setAttribute('aria-hidden', 'true');
     canvas.width = table.offsetWidth;
     canvas.height = CANVAS_HEIGHT;
     const ctx = canvas.getContext('2d');
@@ -210,7 +211,7 @@ function convertToTable(containerSpan) {
 // re-draw the label every time it is updated
 const masterObserver = new MutationObserver((mutations) => {
     // Waveform visualization
-    const label = document.getElementById('l1');
+    const label = document.querySelector('.waveform-panel .label');
     if (label && !label.querySelector('canvas')) {
         convertToTable(label);
     }
@@ -244,20 +245,23 @@ const char* const customCSS = R"(
 }
 .waveform-panel .char-table {
     border-collapse: collapse;
-    width: auto;
+    width: 100%;
 }
 .waveform-panel .char-table tbody td {
     border: 1px solid #ccc;
-    padding: 4px 6px;
+    padding: 3px 0;
     font-family: monospace;
+    font-size: 0.85em;
+    white-space: pre;
     text-align: center;
     background-color: #f9f9f9;
     color: #864D0F;
 }
 .waveform-panel .char-table .index-row th {
     border: 1px solid #b2dfdb;
-    padding: 2px 4px;
+    padding: 2px 0;
     font-family: monospace;
+    font-size: 0.70em;
     background-color: #e0f2f1;
     color: #00695c;
     font-weight: bold;
@@ -273,12 +277,12 @@ const char* const customCSS = R"(
     color: #5d4037;
     border: 1px solid #c8b99c;
     border-bottom: 1px solid #e0d6c3;
-    padding: 3px 4px;
+    padding: 2px 1px;
     font-family: sans-serif;
-    font-size: 0.72em;
+    font-size: 0.65em;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.02em;
     text-align: center;
     white-space: nowrap;
 }
@@ -289,9 +293,10 @@ const char* const customCSS = R"(
     border-bottom: 1px solid #e0e0e0;
     border-left: 1px dotted #e0e0e0;
     border-right: 1px dotted #e0e0e0;
-    padding: 2px 2px;
+    padding: 2px 0;
     font-family: monospace;
-    font-size: 0.68em;
+    font-size: 0.62em;
+    font-weight: 400;
     text-align: center;
     white-space: nowrap;
 }
@@ -306,9 +311,9 @@ const char* const customCSS = R"(
     color: #065f46;
     border: 1px solid #81c784;
     border-top: none;
-    padding: 3px 4px;
+    padding: 2px 1px;
     font-family: monospace;
-    font-size: 0.82em;
+    font-size: 0.75em;
     font-weight: bold;
     text-align: center;
     white-space: nowrap;

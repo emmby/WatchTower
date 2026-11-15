@@ -517,6 +517,8 @@ void test_webui_custom_css_and_waveform_panel_wiring(void) {
     TEST_ASSERT_NOT_NULL(strstr(customJS, "JJY:"));
     TEST_ASSERT_NOT_NULL(strstr(customJS, "DCF77:"));
     TEST_ASSERT_NOT_NULL(strstr(customJS, "MSF:"));
+    TEST_ASSERT_NULL(strstr(customCSS, "width: auto"));
+    TEST_ASSERT_NOT_NULL(strstr(customJS, ".waveform-panel .label"));
 }
 
 int main(int argc, char **argv) {
