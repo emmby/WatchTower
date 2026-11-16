@@ -221,37 +221,63 @@ const IANA_ALIASES = {
     'US/Mountain': 'America/Denver',
     'US/Pacific': 'America/Los_Angeles',
     'US/Alaska': 'America/Anchorage',
-    'US/Hawaii': 'Pacific/Honolulu'
+    'US/Hawaii': 'Pacific/Honolulu',
+    'Canada/Eastern': 'America/Toronto',
+    'Canada/Pacific': 'America/Vancouver'
 };
+
+let allTimezonesCache = null;
+
+function getAllTimezones() {
+    if (allTimezonesCache) return allTimezonesCache;
+    const list = [];
+    if (typeof TIMEZONE_REGIONS === 'object') {
+        Object.entries(TIMEZONE_REGIONS).forEach(([region, cities]) => {
+            if (Array.isArray(cities)) {
+                cities.forEach(city => list.push(`${region}/${city}`));
+            }
+        });
+    }
+    if (!list.includes('UTC')) list.push('UTC');
+    allTimezonesCache = list;
+    return allTimezonesCache;
+}
 
 function resolveKnownIana(tz) {
     const trimmed = (tz || '').trim();
-    return IANA_ALIASES[trimmed] || trimmed;
-}
-
-function parseIana(tz) {
-    if (!tz || typeof TIMEZONE_REGIONS !== 'object') return null;
-    const idx = tz.indexOf('/');
-    if (idx <= 0) return null;
-    const region = tz.slice(0, idx);
-    const city = tz.slice(idx + 1);
-    const cities = TIMEZONE_REGIONS[region];
-    if (!Array.isArray(cities) || !cities.includes(city)) return null;
-    return { region, city };
-}
-
-function formatCityLabel(city) {
-    return city.replace(/\//g, ' / ').replace(/_/g, ' ');
+    if (!trimmed) return '';
+    if (IANA_ALIASES[trimmed]) return IANA_ALIASES[trimmed];
+    const withUnderscores = trimmed.replace(/\s+/g, '_');
+    if (IANA_ALIASES[withUnderscores]) return IANA_ALIASES[withUnderscores];
+    const all = getAllTimezones();
+    if (all.includes(trimmed)) return trimmed;
+    if (all.includes(withUnderscores)) return withUnderscores;
+    return '';
 }
 
 function getBrowserIanaTimezone() {
     try {
         const raw = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        const resolved = resolveKnownIana(raw);
-        return parseIana(resolved) ? resolved : '';
+        return resolveKnownIana(raw);
     } catch (e) {
         return '';
     }
+}
+
+function ensureTimezoneDatalist() {
+    let dl = document.getElementById('tz-datalist');
+    if (dl) return dl;
+    dl = document.createElement('datalist');
+    dl.id = 'tz-datalist';
+    const all = getAllTimezones();
+    all.forEach(tz => {
+        const opt = document.createElement('option');
+        opt.value = tz;
+        opt.label = tz.replace(/_/g, ' ');
+        dl.appendChild(opt);
+    });
+    document.body.appendChild(dl);
+    return dl;
 }
 
 function initOrSyncTimezonePicker(panel) {
@@ -259,158 +285,59 @@ function initOrSyncTimezonePicker(panel) {
     const input = panel.querySelector('input');
     if (!input) return;
 
-    const existing = panel.querySelector('.tz-picker');
-    if (existing) {
-        if (existing.dataset.syncedValue !== input.value.trim() && existing._syncFromInput) {
-            existing._syncFromInput();
-        }
-        return;
+    ensureTimezoneDatalist();
+
+    if (input.getAttribute('list') !== 'tz-datalist') {
+        input.setAttribute('list', 'tz-datalist');
+        input.setAttribute('autocomplete', 'off');
+        input.setAttribute('spellcheck', 'false');
+        input.setAttribute('placeholder', 'Search city or timezone\u2026');
     }
 
-    const picker = document.createElement('div');
-    picker.className = 'tz-picker';
-
-    const regionField = document.createElement('div');
-    regionField.className = 'tz-field';
-    const regionLabel = document.createElement('label');
-    regionLabel.setAttribute('for', 'tz-region-select');
-    regionLabel.textContent = 'Region';
-    const regionSelect = document.createElement('select');
-    regionSelect.id = 'tz-region-select';
-    Object.keys(TIMEZONE_REGIONS).forEach(region => {
-        const opt = document.createElement('option');
-        opt.value = region;
-        opt.textContent = region;
-        regionSelect.appendChild(opt);
-    });
-    regionField.appendChild(regionLabel);
-    regionField.appendChild(regionSelect);
-
-    const cityField = document.createElement('div');
-    cityField.className = 'tz-field';
-    const cityLabel = document.createElement('label');
-    cityLabel.setAttribute('for', 'tz-city-select');
-    cityLabel.textContent = 'City / Zone';
-    const citySelect = document.createElement('select');
-    citySelect.id = 'tz-city-select';
-    cityField.appendChild(cityLabel);
-    cityField.appendChild(citySelect);
-
-    const detectBtn = document.createElement('button');
-    detectBtn.type = 'button';
-    detectBtn.className = 'tz-detect-btn';
-    detectBtn.textContent = 'Use Browser Timezone';
-    const initialBrowserTz = getBrowserIanaTimezone();
-    if (initialBrowserTz) {
-        detectBtn.title = `Detected: ${initialBrowserTz}`;
-    } else {
-        detectBtn.disabled = true;
-        detectBtn.title = 'Browser timezone unavailable';
-    }
-
-    function removeCustomRegionOption() {
-        const customOpt = regionSelect.querySelector('option[value="__custom__"]');
-        if (customOpt) customOpt.remove();
-    }
-
-    function populateCities(region, selectedCity, includePlaceholder) {
-        citySelect.textContent = '';
-        if (includePlaceholder) {
-            const placeholder = document.createElement('option');
-            placeholder.value = '';
-            placeholder.textContent = 'Select city\u2026';
-            placeholder.disabled = true;
-            placeholder.selected = true;
-            citySelect.appendChild(placeholder);
-        }
-        const cities = TIMEZONE_REGIONS[region] || [];
-        cities.forEach(city => {
-            const opt = document.createElement('option');
-            opt.value = city;
-            opt.textContent = formatCityLabel(city);
-            if (!includePlaceholder && city === selectedCity) {
-                opt.selected = true;
+    if (!input._tzNormalizeAttached) {
+        input._tzNormalizeAttached = true;
+        input.addEventListener('change', () => {
+            const resolved = resolveKnownIana(input.value);
+            if (resolved && input.value !== resolved) {
+                input.value = resolved;
             }
-            citySelect.appendChild(opt);
         });
-        if (!includePlaceholder && selectedCity) {
-            citySelect.value = selectedCity;
-        }
     }
 
-    function commitTimezone(nextTz) {
-        if (!parseIana(nextTz)) return;
-        picker.dataset.syncedValue = nextTz;
-        if (input.value !== nextTz) {
-            input.value = nextTz;
-            input.dispatchEvent(new Event('change'));
-        }
-    }
+    let group = panel.querySelector('.tz-input-group');
+    if (!group) {
+        group = document.createElement('div');
+        group.className = 'tz-input-group';
 
-    function syncFromInput() {
-        const raw = input.value.trim();
-        picker.dataset.syncedValue = raw;
-        const parsed = parseIana(raw);
-        if (parsed) {
-            removeCustomRegionOption();
-            regionSelect.value = parsed.region;
-            populateCities(parsed.region, parsed.city, false);
-            return;
-        }
-        if (!regionSelect.querySelector('option[value="__custom__"]')) {
-            const customOpt = document.createElement('option');
-            customOpt.value = '__custom__';
-            customOpt.textContent = 'Custom';
-            regionSelect.prepend(customOpt);
-        }
-        regionSelect.value = '__custom__';
-        citySelect.textContent = '';
-        const rawOpt = document.createElement('option');
-        rawOpt.value = '__custom__';
-        rawOpt.textContent = raw || '(unset)';
-        rawOpt.selected = true;
-        citySelect.appendChild(rawOpt);
-    }
+        const detectBtn = document.createElement('button');
+        detectBtn.type = 'button';
+        detectBtn.className = 'tz-detect-btn';
+        detectBtn.setAttribute('aria-label', 'Use Browser Timezone');
+        detectBtn.innerHTML = '<span class="tz-icon" aria-hidden="true">\uD83C\uDF10</span><span class="tz-btn-text">Browser</span>';
 
-    regionSelect.addEventListener('change', () => {
-        const region = regionSelect.value;
-        if (region === '__custom__') {
-            syncFromInput();
-            return;
-        }
-        removeCustomRegionOption();
-        const current = parseIana(input.value.trim());
-        if (current && current.region === region) {
-            populateCities(region, current.city, false);
+        const browserTz = getBrowserIanaTimezone();
+        if (browserTz) {
+            detectBtn.title = `Use browser timezone (${browserTz})`;
         } else {
-            populateCities(region, '', true);
+            detectBtn.disabled = true;
+            detectBtn.title = 'Browser timezone unavailable';
         }
-    });
 
-    citySelect.addEventListener('change', () => {
-        const region = regionSelect.value;
-        const city = citySelect.value;
-        if (!city || region === '__custom__' || city === '__custom__') return;
-        commitTimezone(`${region}/${city}`);
-    });
+        detectBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const currentBrowserTz = getBrowserIanaTimezone();
+            if (!currentBrowserTz) return;
+            if (input.value !== currentBrowserTz) {
+                input.value = currentBrowserTz;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        });
 
-    detectBtn.addEventListener('click', () => {
-        const tz = getBrowserIanaTimezone();
-        const parsed = parseIana(tz);
-        if (!parsed) return;
-        removeCustomRegionOption();
-        regionSelect.value = parsed.region;
-        populateCities(parsed.region, parsed.city, false);
-        commitTimezone(tz);
-    });
-
-    picker.appendChild(regionField);
-    picker.appendChild(cityField);
-    picker.appendChild(detectBtn);
-    picker._syncFromInput = syncFromInput;
-
-    input.insertAdjacentElement('afterend', picker);
-    syncFromInput();
+        input.parentNode.insertBefore(group, input);
+        group.appendChild(input);
+        group.appendChild(detectBtn);
+    }
 }
 
 // re-draw the label every time it is updated
@@ -548,56 +475,58 @@ const char* const customCSS = R"(
 .waveform-panel h5 a:focus-visible {
     text-decoration: underline;
 }
-.timezone-panel input:has(~ .tz-picker) {
-    display: none;
-}
-.timezone-panel .tz-picker {
+.timezone-panel .tz-input-group {
     display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    text-align: left;
-    margin-bottom: 1.2rem;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    margin: 0 auto 1.2rem;
+    box-sizing: border-box;
 }
-.timezone-panel .tz-field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-}
-.timezone-panel .tz-field label {
-    font-size: 0.85em;
-    font-weight: 700;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.92);
-}
-.timezone-panel .tz-field select {
+.timezone-panel .tz-input-group input {
     margin: 0;
-    padding: 0.5rem 0.6rem;
-    min-height: 48px;
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 36px;
     font: inherit;
-    font-size: max(16px, 1em);
-    color: #000;
-    background: rgba(255, 255, 255, 0.92);
+    font-size: 1.4rem;
+    padding: 4px 8px;
+    border: none;
+    border-radius: 4px;
+    background: #ffffff;
+    color: #000000;
+    box-sizing: border-box;
 }
 .timezone-panel .tz-detect-btn {
-    width: 100%;
-    margin: 0.25rem 0 0 0;
-    min-height: 48px;
-    font: inherit;
-    font-size: max(16px, 0.95em);
-    font-weight: 600;
-    background-color: rgba(0, 0, 0, 0.25);
-    color: #fff;
-    border: 1px solid rgba(255, 255, 255, 0.45);
+    flex: 0 0 auto;
+    height: 36px;
+    margin: 0;
+    padding: 0 10px;
+    background: rgba(0, 0, 0, 0.2);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.4);
     border-radius: 4px;
+    font: inherit;
+    font-size: 1.2rem;
+    font-weight: 600;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    white-space: nowrap;
+    box-sizing: border-box;
 }
 .timezone-panel .tz-detect-btn:hover:enabled {
-    background-color: rgba(0, 0, 0, 0.38);
+    background: rgba(0, 0, 0, 0.35);
 }
-.timezone-panel .tz-field select:focus-visible,
+.timezone-panel .tz-detect-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.timezone-panel .tz-input-group input:focus-visible,
 .timezone-panel .tz-detect-btn:focus-visible {
-    outline: 3px solid #fff;
-    outline-offset: 2px;
+    outline: 2px solid #ffffff;
+    outline-offset: 1px;
 }
 )";

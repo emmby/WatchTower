@@ -631,10 +631,11 @@ void test_webui_timezone_panel_wiring(void) {
 
     TEST_ASSERT_EQUAL_STRING("timezone-panel", ESPUI.panelClasses[webUI._ui_timezone].c_str());
     TEST_ASSERT_NOT_NULL(strstr(customJS, "TIMEZONE_REGIONS"));
+    TEST_ASSERT_NOT_NULL(strstr(customJS, "tz-datalist"));
     TEST_ASSERT_NOT_NULL(strstr(customJS, "tz-detect-btn"));
     TEST_ASSERT_NOT_NULL(strstr(customJS, "detectBtn.type = 'button'"));
     TEST_ASSERT_NOT_NULL(strstr(customCSS, ".timezone-panel"));
-    TEST_ASSERT_NOT_NULL(strstr(customCSS, ".tz-picker"));
+    TEST_ASSERT_NOT_NULL(strstr(customCSS, ".tz-input-group"));
 }
 
 int main(int argc, char **argv) {
