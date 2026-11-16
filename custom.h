@@ -226,6 +226,74 @@ const IANA_ALIASES = {
     'Canada/Pacific': 'America/Vancouver'
 };
 
+const CURATED_TIMEZONES = [
+    {
+        group: 'Common / Universal',
+        zones: [
+            { id: 'UTC', label: '(UTC) Coordinated Universal Time' }
+        ]
+    },
+    {
+        group: 'North America',
+        zones: [
+            { id: 'Pacific/Honolulu', label: '(GMT-10:00) Hawaii' },
+            { id: 'America/Anchorage', label: '(GMT-09:00) Alaska' },
+            { id: 'America/Los_Angeles', label: '(GMT-08:00) Pacific Time (US & Canada)' },
+            { id: 'America/Phoenix', label: '(GMT-07:00) Arizona (No DST)' },
+            { id: 'America/Denver', label: '(GMT-07:00) Mountain Time (US & Canada)' },
+            { id: 'America/Chicago', label: '(GMT-06:00) Central Time (US & Canada)' },
+            { id: 'America/New_York', label: '(GMT-05:00) Eastern Time (US & Canada)' },
+            { id: 'America/Halifax', label: '(GMT-04:00) Atlantic Time (Canada)' },
+            { id: 'America/St_Johns', label: '(GMT-03:30) Newfoundland' }
+        ]
+    },
+    {
+        group: 'Latin America',
+        zones: [
+            { id: 'America/Mexico_City', label: '(GMT-06:00) Mexico City' },
+            { id: 'America/Bogota', label: '(GMT-05:00) Bogota, Lima, Quito' },
+            { id: 'America/Santiago', label: '(GMT-04:00) Santiago' },
+            { id: 'America/Sao_Paulo', label: '(GMT-03:00) São Paulo, Brasilia' },
+            { id: 'America/Argentina/Buenos_Aires', label: '(GMT-03:00) Buenos Aires' }
+        ]
+    },
+    {
+        group: 'Europe',
+        zones: [
+            { id: 'Europe/London', label: '(GMT+00:00) London, Dublin, Lisbon (GMT/BST)' },
+            { id: 'Europe/Paris', label: '(GMT+01:00) Paris, Berlin, Rome, Madrid, Amsterdam (CET)' },
+            { id: 'Europe/Athens', label: '(GMT+02:00) Athens, Helsinki, Bucharest, Kyiv (EET)' },
+            { id: 'Europe/Moscow', label: '(GMT+03:00) Moscow, St. Petersburg' }
+        ]
+    },
+    {
+        group: 'Africa & Middle East',
+        zones: [
+            { id: 'Africa/Cairo', label: '(GMT+02:00) Cairo' },
+            { id: 'Africa/Johannesburg', label: '(GMT+02:00) Johannesburg, Pretoria' },
+            { id: 'Asia/Jerusalem', label: '(GMT+02:00) Jerusalem' },
+            { id: 'Asia/Riyadh', label: '(GMT+03:00) Riyadh, Kuwait' },
+            { id: 'Asia/Dubai', label: '(GMT+04:00) Dubai, Abu Dhabi, Muscat' }
+        ]
+    },
+    {
+        group: 'Asia & Pacific',
+        zones: [
+            { id: 'Asia/Karachi', label: '(GMT+05:00) Islamabad, Karachi, Tashkent' },
+            { id: 'Asia/Kolkata', label: '(GMT+05:30) New Delhi, Mumbai, Kolkata' },
+            { id: 'Asia/Dhaka', label: '(GMT+06:00) Dhaka, Almaty' },
+            { id: 'Asia/Bangkok', label: '(GMT+07:00) Bangkok, Jakarta, Hanoi' },
+            { id: 'Asia/Singapore', label: '(GMT+08:00) Singapore, Hong Kong, Kuala Lumpur' },
+            { id: 'Asia/Shanghai', label: '(GMT+08:00) Beijing, Shanghai, Taipei' },
+            { id: 'Asia/Tokyo', label: '(GMT+09:00) Tokyo, Seoul' },
+            { id: 'Australia/Adelaide', label: '(GMT+09:30) Adelaide, Darwin' },
+            { id: 'Australia/Sydney', label: '(GMT+10:00) Sydney, Melbourne, Brisbane' },
+            { id: 'Pacific/Guam', label: '(GMT+10:00) Guam, Port Moresby' },
+            { id: 'Pacific/Auckland', label: '(GMT+12:00) Auckland, Wellington, Fiji' }
+        ]
+    }
+];
+
 let allTimezonesCache = null;
 
 function getAllTimezones() {
@@ -264,50 +332,58 @@ function getBrowserIanaTimezone() {
     }
 }
 
-function ensureTimezoneDatalist() {
-    let dl = document.getElementById('tz-datalist');
-    if (dl) return dl;
-    dl = document.createElement('datalist');
-    dl.id = 'tz-datalist';
-    const all = getAllTimezones();
-    all.forEach(tz => {
-        const opt = document.createElement('option');
-        opt.value = tz;
-        opt.label = tz.replace(/_/g, ' ');
-        dl.appendChild(opt);
+function buildCuratedSelectOptions(selectEl) {
+    selectEl.innerHTML = '';
+    CURATED_TIMEZONES.forEach(cat => {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = cat.group;
+        cat.zones.forEach(z => {
+            const opt = document.createElement('option');
+            opt.value = z.id;
+            opt.textContent = z.label;
+            optgroup.appendChild(opt);
+        });
+        selectEl.appendChild(optgroup);
     });
-    document.body.appendChild(dl);
-    return dl;
+}
+
+function setSelectValue(selectEl, tzValue) {
+    if (!tzValue) return;
+    const resolved = resolveKnownIana(tzValue) || tzValue;
+    let opt = selectEl.querySelector(`option[value="${resolved}"]`);
+    if (!opt) {
+        let otherGroup = selectEl.querySelector('optgroup[data-dynamic="true"]');
+        if (!otherGroup) {
+            otherGroup = document.createElement('optgroup');
+            otherGroup.label = 'Active / Other';
+            otherGroup.setAttribute('data-dynamic', 'true');
+            selectEl.appendChild(otherGroup);
+        }
+        opt = document.createElement('option');
+        opt.value = resolved;
+        opt.textContent = resolved;
+        otherGroup.appendChild(opt);
+    }
+    selectEl.value = resolved;
 }
 
 function initOrSyncTimezonePicker(panel) {
-    if (!panel || typeof TIMEZONE_REGIONS !== 'object') return;
+    if (!panel) return;
     const input = panel.querySelector('input');
     if (!input) return;
 
-    ensureTimezoneDatalist();
-
-    if (input.getAttribute('list') !== 'tz-datalist') {
-        input.setAttribute('list', 'tz-datalist');
-        input.setAttribute('autocomplete', 'off');
-        input.setAttribute('spellcheck', 'false');
-        input.setAttribute('placeholder', 'Search city or timezone\u2026');
-    }
-
-    if (!input._tzNormalizeAttached) {
-        input._tzNormalizeAttached = true;
-        input.addEventListener('change', () => {
-            const resolved = resolveKnownIana(input.value);
-            if (resolved && input.value !== resolved) {
-                input.value = resolved;
-            }
-        });
-    }
-
     let group = panel.querySelector('.tz-input-group');
+    let select = panel.querySelector('.tz-curated-select');
+
     if (!group) {
         group = document.createElement('div');
         group.className = 'tz-input-group';
+
+        select = document.createElement('select');
+        select.id = 'tz-curated-select';
+        select.className = 'tz-curated-select';
+        select.setAttribute('aria-label', 'Timezone');
+        buildCuratedSelectOptions(select);
 
         const detectBtn = document.createElement('button');
         detectBtn.type = 'button';
@@ -323,20 +399,34 @@ function initOrSyncTimezonePicker(panel) {
             detectBtn.title = 'Browser timezone unavailable';
         }
 
+        function commit(val) {
+            if (input.value !== val) {
+                input.value = val;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        }
+
+        select.addEventListener('change', () => {
+            commit(select.value);
+        });
+
         detectBtn.addEventListener('click', (e) => {
             e.preventDefault();
             const currentBrowserTz = getBrowserIanaTimezone();
             if (!currentBrowserTz) return;
-            if (input.value !== currentBrowserTz) {
-                input.value = currentBrowserTz;
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-                input.dispatchEvent(new Event('change', { bubbles: true }));
-            }
+            setSelectValue(select, currentBrowserTz);
+            commit(currentBrowserTz);
         });
 
         input.parentNode.insertBefore(group, input);
         group.appendChild(input);
+        group.appendChild(select);
         group.appendChild(detectBtn);
+    }
+
+    if (select) {
+        setSelectValue(select, input.value.trim());
     }
 }
 
@@ -484,18 +574,22 @@ const char* const customCSS = R"(
     box-sizing: border-box;
 }
 .timezone-panel .tz-input-group input {
+    display: none;
+}
+.timezone-panel .tz-curated-select {
     margin: 0;
     flex: 1 1 auto;
     min-width: 0;
     height: 36px;
     font: inherit;
-    font-size: 1.4rem;
+    font-size: 1.3rem;
     padding: 4px 8px;
     border: none;
     border-radius: 4px;
     background: #ffffff;
     color: #000000;
     box-sizing: border-box;
+    cursor: pointer;
 }
 .timezone-panel .tz-detect-btn {
     flex: 0 0 auto;
