@@ -7,3 +7,4 @@
 WatchTower.ino.cpp
 .DS_Store
 idf_component.yml
+.flowos

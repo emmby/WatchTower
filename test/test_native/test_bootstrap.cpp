@@ -80,7 +80,10 @@ void ledcWrite(uint8_t pin, uint32_t duty) {
     last_ledc_duty = duty;
     ledc_write_count++;
 }
-void configTzTime(const char* tz, const char* server1, const char* server2 = nullptr, const char* server3 = nullptr) {}
+std::string last_config_tz = "";
+void configTzTime(const char* tz, const char* server1, const char* server2 = nullptr, const char* server3 = nullptr) {
+    last_config_tz = tz ? tz : "";
+}
 bool getLocalTime(struct tm* info, uint32_t ms = 5000) {
     time_t now;
     time(&now);
@@ -122,6 +125,11 @@ void setUp(void) {
     signalGenerator = &wwvb;
     lastEncodedMinute = -1;
     lastEncodedSignal = nullptr;
+    preferences.clear();
+    last_config_tz = "";
+    activeTimezone = TIMEZONE;
+    lastEncodedTimezone = "";
+    networkSyncEnabled = true;
     // Set TZ to UTC for predictable testing
     setenv("TZ", "UTC", 1);
     tzset();
@@ -521,6 +529,114 @@ void test_webui_custom_css_and_waveform_panel_wiring(void) {
     TEST_ASSERT_NOT_NULL(strstr(customJS, ".waveform-panel .label"));
 }
 
+void test_timezone_db_lookup_and_order(void) {
+    TEST_ASSERT_TRUE(kTimezoneCount > 400);
+    for (size_t i = 1; i < kTimezoneCount; ++i) {
+        TEST_ASSERT_TRUE(std::strcmp(kTimezones[i - 1].iana, kTimezones[i].iana) < 0);
+    }
+
+    TEST_ASSERT_TRUE(isKnownIanaTimezone("America/Los_Angeles"));
+    TEST_ASSERT_TRUE(isKnownIanaTimezone("Europe/Berlin"));
+    TEST_ASSERT_TRUE(isKnownIanaTimezone("Europe/Kyiv"));
+    TEST_ASSERT_TRUE(isKnownIanaTimezone("Asia/Tokyo"));
+    TEST_ASSERT_TRUE(isKnownIanaTimezone("Australia/Sydney"));
+    TEST_ASSERT_TRUE(isKnownIanaTimezone("Etc/UTC"));
+    TEST_ASSERT_TRUE(isKnownIanaTimezone("America/Argentina/Buenos_Aires"));
+    TEST_ASSERT_TRUE(isKnownIanaTimezone("America/Fort_Nelson"));
+
+    TEST_ASSERT_FALSE(isKnownIanaTimezone(""));
+    TEST_ASSERT_FALSE(isKnownIanaTimezone(nullptr));
+    TEST_ASSERT_FALSE(isKnownIanaTimezone("Mars/Olympus_Mons"));
+    TEST_ASSERT_FALSE(isKnownIanaTimezone("PST8PDT,M3.2.0,M11.1.0"));
+
+    TEST_ASSERT_EQUAL_STRING("PST8PDT,M3.2.0,M11.1.0", lookupPosixTimezone("America/Los_Angeles"));
+    TEST_ASSERT_EQUAL_STRING("CET-1CEST,M3.5.0,M10.5.0/3", lookupPosixTimezone("Europe/Berlin"));
+    TEST_ASSERT_EQUAL_STRING("EET-2EEST,M3.5.0/3,M10.5.0/4", lookupPosixTimezone("Europe/Kyiv"));
+    TEST_ASSERT_EQUAL_STRING("JST-9", lookupPosixTimezone("Asia/Tokyo"));
+    TEST_ASSERT_EQUAL_STRING("UTC0", lookupPosixTimezone("Etc/UTC"));
+    TEST_ASSERT_EQUAL_STRING("UTC0", lookupPosixTimezone(""));
+    // Unknown values pass through directly so raw POSIX strings continue to work.
+    TEST_ASSERT_EQUAL_STRING("CST6CDT,M3.2.0,M11.1.0", lookupPosixTimezone("CST6CDT,M3.2.0,M11.1.0"));
+}
+
+void test_webui_timezone_change_reencodes_and_persists(void) {
+    // 2025-12-25 18:00:00 UTC = 10:00:00 PST, or 03:00:00 JST (next day)
+    setenv("TZ", "PST8PDT,M3.2.0,M11.1.0", 1);
+    tzset();
+    mock_tv.tv_sec = 1766685600;
+    mock_tv.tv_usec = 100000;
+
+    setup();
+
+    Control sigSender;
+    sigSender.id = webUI._ui_signal_select;
+    sigSender.value = "JJY";
+    WebUI::_onSignalChange(&sigSender, S_ACTIVE);
+    loop();
+
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ONE, activeBroadcast[13]);
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ZERO, activeBroadcast[17]);
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ZERO, activeBroadcast[18]);
+
+    Control tzSender;
+    tzSender.id = webUI._ui_timezone;
+    tzSender.value = " Asia/Tokyo ";
+    WebUI::_onTimezoneChange(&tzSender, S_ACTIVE);
+    loop(); // Same minute, mid-minute re-encode
+
+    TEST_ASSERT_EQUAL_STRING("Asia/Tokyo", activeTimezone.c_str());
+    TEST_ASSERT_EQUAL_STRING("Asia/Tokyo", preferences.getString("tz", "").c_str());
+    TEST_ASSERT_EQUAL_STRING("Asia/Tokyo", ESPUI.printedValues[webUI._ui_timezone].c_str());
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ZERO, activeBroadcast[13]);
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ONE, activeBroadcast[17]);
+    TEST_ASSERT_EQUAL(TimeCodeSymbol::ONE, activeBroadcast[18]);
+
+    Control syncSender;
+    syncSender.id = webUI._ui_network_sync_switch;
+    WebUI::_onSyncToggle(&syncSender, S_INACTIVE);
+    WebUI::_onSyncToggle(&syncSender, S_ACTIVE);
+    TEST_ASSERT_EQUAL_STRING("JST-9", last_config_tz.c_str());
+}
+
+void test_webui_timezone_rejects_invalid_input(void) {
+    setup();
+
+    Control tzSender;
+    tzSender.id = webUI._ui_timezone;
+    tzSender.value = "";
+    WebUI::_onTimezoneChange(&tzSender, S_ACTIVE);
+    TEST_ASSERT_EQUAL_STRING("America/Los_Angeles", activeTimezone.c_str());
+    TEST_ASSERT_EQUAL_STRING("", preferences.getString("tz", "").c_str());
+    TEST_ASSERT_EQUAL_STRING("America/Los_Angeles", ESPUI.printedValues[webUI._ui_timezone].c_str());
+
+    tzSender.value = "NotATimezone/Nowhere";
+    WebUI::_onTimezoneChange(&tzSender, S_ACTIVE);
+    TEST_ASSERT_EQUAL_STRING("America/Los_Angeles", activeTimezone.c_str());
+    TEST_ASSERT_EQUAL_STRING("", preferences.getString("tz", "").c_str());
+    TEST_ASSERT_EQUAL_STRING("America/Los_Angeles", ESPUI.printedValues[webUI._ui_timezone].c_str());
+}
+
+void test_setup_loads_saved_timezone_from_preferences(void) {
+    preferences.putBool("net_sync", false);
+    preferences.putString("tz", "Europe/London");
+
+    setup();
+
+    TEST_ASSERT_EQUAL_STRING("Europe/London", activeTimezone.c_str());
+    TEST_ASSERT_EQUAL_STRING("GMT0BST,M3.5.0/1,M10.5.0", getenv("TZ"));
+}
+
+void test_webui_timezone_panel_wiring(void) {
+    setup();
+
+    TEST_ASSERT_EQUAL_STRING("timezone-panel", ESPUI.panelClasses[webUI._ui_timezone].c_str());
+    TEST_ASSERT_NOT_NULL(strstr(customJS, "TIMEZONE_REGIONS"));
+    TEST_ASSERT_NOT_NULL(strstr(customJS, "tz-detect-btn"));
+    TEST_ASSERT_NOT_NULL(strstr(customJS, "detectBtn.type = 'button'"));
+    TEST_ASSERT_NOT_NULL(strstr(customCSS, ".timezone-panel"));
+    TEST_ASSERT_NOT_NULL(strstr(customCSS, ".tz-picker"));
+}
+
 int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_setup_completes);
@@ -539,6 +655,11 @@ int main(int argc, char **argv) {
     RUN_TEST(test_custom_js_wwvb_groups);
     RUN_TEST(test_protocol_timezone_and_reencode);
     RUN_TEST(test_webui_custom_css_and_waveform_panel_wiring);
+    RUN_TEST(test_timezone_db_lookup_and_order);
+    RUN_TEST(test_webui_timezone_change_reencodes_and_persists);
+    RUN_TEST(test_webui_timezone_rejects_invalid_input);
+    RUN_TEST(test_setup_loads_saved_timezone_from_preferences);
+    RUN_TEST(test_webui_timezone_panel_wiring);
     UNITY_END();
     return 0;
 }

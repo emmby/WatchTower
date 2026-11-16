@@ -34,10 +34,9 @@ const bool ENABLE_WEB_UI = true;
 // Set this to the pin your antenna is connected on
 const int PIN_ANTENNA = 13;
 
-// Set to your timezone.
-// This is needed for computing DST if applicable
-// https://gist.github.com/alwynallan/24d96091655391107939
-const char *TIMEZONE = "PST8PDT,M3.2.0,M11.1.0"; // America/Los_Angeles
+// Default timezone (IANA name from include/TimezoneDB.h, or a raw POSIX TZ string).
+// Can also be changed at runtime in the Web UI (saved to flash).
+const char *TIMEZONE = "America/Los_Angeles";
 
 // ========================
 // Includes
@@ -56,6 +55,7 @@ const char *TIMEZONE = "PST8PDT,M3.2.0,M11.1.0"; // America/Los_Angeles
 #include "include/DCF77Signal.h"
 #include "include/MSFSignal.h"
 #include "include/JJYSignal.h"
+#include "include/TimezoneDB.h"
 #include "include/WebUI.h"
 
 
@@ -90,6 +90,8 @@ volatile const TimeCodeSymbol* activeBroadcast = broadcastA; // pointer to the c
 volatile bool transitionOccurred = false; // set by ISR to notify loop() of a PWM edge
 time_t lastEncodedMinute = -1; // epoch minute (tv_sec / 60) last encoded into activeBroadcast
 RadioTimeSignal* lastEncodedSignal = nullptr; // protocol last encoded into activeBroadcast
+String activeTimezone = TIMEZONE; // active IANA timezone name (or raw POSIX string)
+String lastEncodedTimezone = ""; // timezone last encoded into activeBroadcast
 
 // ========================
 // Helpers
@@ -137,6 +139,7 @@ void encodeBroadcastMinute(time_t now_sec) {
     activeBroadcast = inactive; // atomic pointer swap
     lastEncodedMinute = now_sec / 60;
     lastEncodedSignal = signalGenerator;
+    lastEncodedTimezone = activeTimezone;
 }
 
 // ========================
@@ -217,6 +220,7 @@ void setup() {
 
   preferences.begin("watchtower", false);
   networkSyncEnabled = preferences.getBool("net_sync", true);
+  activeTimezone = preferences.getString("tz", TIMEZONE);
   String savedSignal = preferences.getString("signal", "WWVB");
   if (savedSignal == "DCF77") signalGenerator = &dcf77;
   else if (savedSignal == "MSF") signalGenerator = &msf;
@@ -228,7 +232,7 @@ void setup() {
 
   // --- WEB UI SETUP ---
   if( ENABLE_WEB_UI ) {
-    webUI.begin(TIMEZONE, signalGenerator,
+    webUI.begin(activeTimezone, signalGenerator,
                 wwvb, dcf77, msf, jjy,
                 preferences, PIN_ANTENNA, ntpServer,
                 networkSyncEnabled, mdns);
@@ -240,12 +244,13 @@ void setup() {
   // By default, it will resync every few hours
   sntp_set_time_sync_notification_cb(time_sync_notification_cb);
   
+  const char* posixTimezone = lookupPosixTimezone(activeTimezone.c_str());
   if (networkSyncEnabled) {
-      configTzTime(TIMEZONE, ntpServer);
+      configTzTime(posixTimezone, ntpServer);
   } else {
       // When network sync is disabled, we still need to configure the timezone
       // so that localtime() works correctly.
-      setenv("TZ", TIMEZONE, 1);
+      setenv("TZ", posixTimezone, 1);
       tzset();
   }
   
@@ -293,7 +298,9 @@ void loop() {
   struct timeval now; // current time in seconds / micros
   gettimeofday(&now, NULL);
 
-  if (now.tv_sec / 60 != lastEncodedMinute || signalGenerator != lastEncodedSignal) {
+  if (now.tv_sec / 60 != lastEncodedMinute ||
+      signalGenerator != lastEncodedSignal ||
+      activeTimezone != lastEncodedTimezone) {
     encodeBroadcastMinute(now.tv_sec);
   }
 

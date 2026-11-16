@@ -161,7 +161,9 @@ Once the network is connected and the time has sync’d, the light will turn gre
 Once connected to WiFi, the Watch Tower hosts a built-in web dashboard accessible at `http://watchtower.local` (or via your board's local IP address). It displays:
 
 - **Broadcast Waveform**: A live 60-second visual waveform and styled bit-group table (`M`, `0`, `1`, `-` for seconds `00`–`59`, plus bit weights and decoded field values for the active protocol) showing the current frame as it is transmitted in real time.
-- **Current Time**, **Date**, and configured **Timezone**.
+- **Current Time** and **Date** (both local and UTC).
+- **Timezone Selector**: Choose any worldwide IANA timezone via cascading **Region** → **City / Zone** dropdowns or the one-click **Use Browser Timezone** button; changes persist in flash across reboots and immediately update local-time protocols and DST bits (table generated from [`nayarsystems/posix_tz_db`](https://github.com/nayarsystems/posix_tz_db) via `scripts/update_tz_db.py`).
+- **Signal Protocol** and **Network Time Sync** controls (with manual date/time inputs when NTP sync is disabled).
 - **System Uptime** and **Last NTP Sync** timestamp.
 
 If you prefer not to run a web server on your local network, you can disable it by setting `ENABLE_WEB_UI = false` in `WatchTower.ino`.

@@ -18,6 +18,7 @@ struct Control {
 inline uint16_t Control::noParent = 0;
 
 #define S_ACTIVE -7
+#define S_INACTIVE 7
 
 class ESPUIClass {
 public:
@@ -48,10 +49,25 @@ public:
     }
     
     // Mock switcher
-    uint16_t switcher(const char* label, void (*callback)(Control*, int), ControlColor color, bool startState = false) { return 0; }
+    uint16_t switcher(const char* label, void (*callback)(Control*, int), ControlColor color, bool startState = false) {
+        uint16_t id = nextId++;
+        if (label) labels[id] = label;
+        printedValues[id] = startState ? "1" : "0";
+        return id;
+    }
     
     // Mock text
-    uint16_t text(const char* label, void (*callback)(Control*, int), ControlColor color, const char* value) { return 0; }
+    uint16_t text(const char* label, void (*callback)(Control*, int), ControlColor color, const char* value) {
+        uint16_t id = nextId++;
+        if (label) labels[id] = label;
+        if (value) printedValues[id] = value;
+        return id;
+    }
+
+    // Mock updateText
+    void updateText(uint16_t id, const String& value, int clientId = -1) {
+        printedValues[id] = value.c_str();
+    }
     
     // Mock updateVisibility
     void updateVisibility(uint16_t id, bool visible) {}
@@ -60,7 +76,12 @@ public:
     void setInputType(uint16_t id, const char* type) {}
 
     // Mock addControl
-    uint16_t addControl(ControlType type, const char* label, const char* value, ControlColor color, uint16_t parent, void (*callback)(Control*, int) = nullptr) { return 0; }
+    uint16_t addControl(ControlType type, const char* label, const char* value, ControlColor color, uint16_t parent, void (*callback)(Control*, int) = nullptr) {
+        uint16_t id = nextId++;
+        if (label) labels[id] = label;
+        if (value) printedValues[id] = value;
+        return id;
+    }
     
     // Mock updateSelect
     void updateSelect(uint16_t id, const char* value) {}

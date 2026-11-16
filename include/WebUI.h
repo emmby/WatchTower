@@ -11,6 +11,7 @@
 #include "include/DCF77Signal.h"
 #include "include/MSFSignal.h"
 #include "include/JJYSignal.h"
+#include "include/TimezoneDB.h"
 
 
 // Encapsulates all ESPUI web dashboard setup and per-second updates.
@@ -21,7 +22,7 @@ public:
     // Call from setup() to wire up all the ESPUI controls.
     // Pointers/references are stored — the caller owns the objects.
     void begin(
-        const char* timezone,
+        String& timezoneRef,
         RadioTimeSignal*& signalGenerator,
         WWVBSignal& wwvb, DCF77Signal& dcf77, MSFSignal& msf, JJYSignal& jjy,
         Preferences& preferences,
@@ -31,7 +32,7 @@ public:
         MDNS& mdns
     ) {
         _instance = this;
-        _timezone = timezone;
+        _timezone = &timezoneRef;
         _wwvb = &wwvb; _dcf77 = &dcf77; _msf = &msf; _jjy = &jjy;
         _signalGenerator = &signalGenerator;
         _preferences = &preferences;
@@ -47,7 +48,8 @@ public:
         _ui_time_utc = ESPUI.addControl(ControlType::Label, "UTC", "Loading...", ControlColor::Turquoise, _ui_time);
         _ui_date = ESPUI.label("Date", ControlColor::Emerald, "Loading...");
         _ui_date_utc = ESPUI.addControl(ControlType::Label, "UTC", "Loading...", ControlColor::Emerald, _ui_date);
-        ESPUI.label("Timezone", ControlColor::Peterriver, timezone);
+        _ui_timezone = ESPUI.text("Timezone", _onTimezoneChange, ControlColor::Peterriver, _timezone->c_str());
+        ESPUI.setPanelClass(_ui_timezone, "timezone-panel");
         _ui_uptime = ESPUI.label("System Uptime", ControlColor::Carrot, "0s");
         _ui_last_sync = ESPUI.label("Last NTP Sync", ControlColor::Alizarin, "Pending...");
         _ui_network_sync_switch = ESPUI.switcher("Network time sync", _onSyncToggle, ControlColor::Sunflower, *_networkSyncEnabled);
@@ -147,7 +149,7 @@ public:
 
 private:
     // --- Shared state (owned by WatchTower.ino, stored by pointer/ref) ---
-    const char* _timezone = nullptr;
+    String* _timezone = nullptr;
     const char* _ntpServer = nullptr;
     int _pinAntenna = 0;
     WWVBSignal* _wwvb = nullptr;
@@ -173,6 +175,7 @@ public:
     // --- ESPUI control IDs ---
     uint16_t _ui_time, _ui_time_utc;
     uint16_t _ui_date, _ui_date_utc;
+    uint16_t _ui_timezone;
     uint16_t _ui_broadcast;
     uint16_t _ui_uptime, _ui_last_sync;
     uint16_t _ui_network_sync_switch;
@@ -189,8 +192,32 @@ public:
     static void _onSyncToggle(Control* sender, int value) {
         if (_instance) _instance->handleSyncToggle(sender, value);
     }
+    static void _onTimezoneChange(Control* sender, int value) {
+        if (_instance) _instance->handleTimezoneChange(sender, value);
+    }
 
 private:
+
+    void handleTimezoneChange(Control* sender, int value) {
+        if (sender->id != _ui_timezone) return;
+        String selected = sender->value;
+        selected.trim();
+        if (!isKnownIanaTimezone(selected.c_str())) {
+            Serial.println("Unknown timezone ignored: " + selected);
+            ESPUI.updateText(_ui_timezone, *_timezone);
+            return;
+        }
+
+        *_timezone = selected;
+        _preferences->putString("tz", selected);
+
+        const char* posix = lookupPosixTimezone(selected.c_str());
+        setenv("TZ", posix, 1);
+        tzset();
+
+        ESPUI.updateText(_ui_timezone, selected);
+        Serial.println("Timezone changed to: " + selected + " (" + posix + ")");
+    }
 
     void handleManualTime(Control* sender, int value) {
         if (sender->id == _ui_manual_date) {
@@ -246,7 +273,7 @@ private:
 
         if (*_networkSyncEnabled) {
             esp_sntp_stop();
-            configTzTime(_timezone, _ntpServer);
+            configTzTime(lookupPosixTimezone(_timezone->c_str()), _ntpServer);
             Serial.println("NTP Sync re-enabled");
             ESPUI.updateVisibility(_ui_manual_date, false);
             ESPUI.updateVisibility(_ui_manual_time, false);

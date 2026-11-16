@@ -30,6 +30,15 @@ public:
     String(int i) : _s(std::to_string(i)) {}
     const char* c_str() const { return _s.c_str(); }
     size_t length() const { return _s.length(); }
+    void trim() {
+        size_t start = _s.find_first_not_of(" \t\r\n");
+        if (start == std::string::npos) {
+            _s.clear();
+            return;
+        }
+        size_t end = _s.find_last_not_of(" \t\r\n");
+        _s = _s.substr(start, end - start + 1);
+    }
     String operator+(const String& other) const { return String(_s + other._s); }
     String operator+(const char* other) const { return String(_s + other); }
     friend String operator+(const char* lhs, const String& rhs) { return String(lhs + rhs._s); }
